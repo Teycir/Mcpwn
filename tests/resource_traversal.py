@@ -5,10 +5,14 @@ import urllib.parse
 class ResourceTraversalTest:
     """Test path traversal on resources and tools"""
     
-    LEAK_MARKERS = [
-        "root:x:0:0", "[extensions]", "PDO Exception",
-        "java.io.FileNotFound", "boot loader"
-    ]
+    LEAK_MARKERS = {
+        'passwd': ["root:x:0:0", "daemon:", "bin:"],
+        'shadow': ["root:$", "$6$", "$y$"],
+        'ssh_key': ["-----BEGIN", "PRIVATE KEY"],
+        'config': ["[extensions]", "php.ini"],
+        'windows': ["[boot loader]", "[operating systems]"],
+        'error': ["PDO Exception", "java.io.FileNotFound"]
+    }
 
     def __init__(self, pentester):
         self.pentester = pentester
@@ -114,4 +118,11 @@ class ResourceTraversalTest:
         if not content:
             return False
         content_str = str(content)
-        return any(marker in content_str for marker in self.LEAK_MARKERS)
+        # Require 2+ markers from same category for higher confidence
+        for category, markers in self.LEAK_MARKERS.items():
+            matches = sum(1 for m in markers if m in content_str)
+            if matches >= 2:
+                return True
+        # Single high-confidence markers
+        high_confidence = ["root:x:0:0:root", "-----BEGIN RSA PRIVATE KEY"]
+        return any(marker in content_str for marker in high_confidence)

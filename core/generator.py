@@ -13,7 +13,58 @@ class LLMPayloadGenerator:
     def __init__(self, config: Dict):
         self.config = config
         self.enabled = config.get('generation_mode', False)
-        logger.info(f"LLM Generator initialized (enabled={self.enabled})")
+        self.api_key = config.get('api_key')
+        self.client = None
+        self.provider = None
+        
+        if self.enabled and self.api_key:
+            # Detect provider by key prefix
+            if self.api_key.startswith('sk-ant-'):
+                self._init_anthropic()
+            elif self.api_key.startswith('AIzaSy'):
+                self._init_gemini()
+            elif self.api_key.startswith('sk-or-'):
+                self._init_openrouter()
+            else:
+                logger.warning("Unknown API key format. Supported: Anthropic (sk-ant-), Gemini (AIzaSy), OpenRouter (sk-or-)")
+                self.enabled = False
+        elif self.enabled:
+            logger.warning("LLM generation enabled but no API key provided")
+            self.enabled = False
+    
+    def _init_anthropic(self):
+        try:
+            import anthropic
+            self.client = anthropic.Anthropic(api_key=self.api_key)
+            self.provider = 'anthropic'
+            logger.info("LLM Generator initialized with Anthropic")
+        except ImportError:
+            logger.warning("anthropic package not installed. Run: pip install anthropic")
+            self.enabled = False
+    
+    def _init_gemini(self):
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            self.client = genai.GenerativeModel('gemini-1.5-flash')
+            self.provider = 'gemini'
+            logger.info("LLM Generator initialized with Gemini")
+        except ImportError:
+            logger.warning("google-generativeai package not installed. Run: pip install google-generativeai")
+            self.enabled = False
+    
+    def _init_openrouter(self):
+        try:
+            import openai
+            self.client = openai.OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=self.api_key
+            )
+            self.provider = 'openrouter'
+            logger.info("LLM Generator initialized with OpenRouter")
+        except ImportError:
+            logger.warning("openai package not installed. Run: pip install openai")
+            self.enabled = False
     
     def generate(self, context: Dict) -> List[str]:
         """
@@ -54,7 +105,35 @@ class LLMPayloadGenerator:
         )
     
     def _simulate_generation(self, tool_name: str, target_type: str, prompt: str) -> List[str]:
-        """Simulated LLM response - replace with actual API call."""
+        """Generate payloads using LLM or fallback to templates."""
+        if self.client:
+            try:
+                if self.provider == 'anthropic':
+                    response = self.client.messages.create(
+                        model="claude-3-5-sonnet-20241022",
+                        max_tokens=500,
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    content = response.content[0].text
+                elif self.provider == 'gemini':
+                    response = self.client.generate_content(prompt)
+                    content = response.text
+                elif self.provider == 'openrouter':
+                    response = self.client.chat.completions.create(
+                        model="meta-llama/llama-3.1-8b-instruct:free",
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    content = response.choices[0].message.content
+                else:
+                    raise ValueError(f"Unknown provider: {self.provider}")
+                
+                payloads = json.loads(content)
+                if isinstance(payloads, list):
+                    return payloads[:10]
+            except Exception as e:
+                logger.warning(f"LLM generation failed: {e}, using templates")
+        
+        # Fallback to templates
         seed = hash(prompt) % 1000
         
         templates = {

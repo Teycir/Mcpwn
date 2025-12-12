@@ -127,3 +127,10 @@ class SSRFTest:
             'redis_version',          # Redis info
         ]
         return any(ind in content for ind in indicators)
+    
+    def cleanup(self):
+        """Stop HTTP listener and cleanup resources"""
+        if self.server:
+            self.server.shutdown()
+            self.server.server_close()
+            self.server = None
