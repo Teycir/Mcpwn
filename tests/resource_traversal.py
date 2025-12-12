@@ -29,11 +29,13 @@ class ResourceTraversalTest:
         except Exception:
             valid_uris = ["file:///tmp/test"]
 
-        payloads = [
-            "/../../../../../../../../../../../../etc/passwd",
-            "/../../../../../../../../../../../../windows/win.ini",
-            "/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd"
-        ]
+        # Get payloads: LLM-generated or static
+        context = {
+            'tool_name': 'resources/read',
+            'target_type': 'traversal',
+            'previous_failure': None
+        }
+        payloads = self.pentester.get_payloads(context)
 
         targets = set()
         for uri in valid_uris:
@@ -70,16 +72,19 @@ class ResourceTraversalTest:
             return findings
 
         suspicious_args = ['path', 'file', 'filename', 'filepath', 'src', 'source', 'dir']
-        payloads = [
-            "../../../../../../../../../../../../etc/passwd",
-            "C:\\Windows\\win.ini",
-            "....//....//....//etc/passwd"
-        ]
 
         for tool in tools:
             schema = tool.get('inputSchema', {})
             for arg_name in schema.get('properties', {}).keys():
                 if any(s in arg_name.lower() for s in suspicious_args):
+                    # Get payloads for this specific tool
+                    context = {
+                        'tool_name': tool['name'],
+                        'target_type': 'traversal',
+                        'schema_hints': schema
+                    }
+                    payloads = self.pentester.get_payloads(context)
+                    
                     for payload in payloads:
                         args = {arg_name: payload}
                         for req in schema.get('required', []):

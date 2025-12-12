@@ -1,12 +1,7 @@
 """Tool argument injection tests"""
 import time
 import copy
-from payloads import PAYLOADS, PAYLOAD_PRIORITY
-
-try:
-    from payloads import RCE_QUICK_PAYLOADS
-except ImportError:
-    RCE_QUICK_PAYLOADS = PAYLOADS.get('command_injection', [])[:5]
+from payloads import PAYLOAD_PRIORITY
 
 
 class ToolInjectionTest:
@@ -102,15 +97,15 @@ class ToolInjectionTest:
 
         # Quick mode: use minimal payloads
         if config.get('quick'):
-            return self._quick_scan(tool, RCE_QUICK_PAYLOADS)
+            context = {'tool_name': tool['name'], 'target_type': 'command_injection', 'schema_hints': schema}
+            quick_payloads = self.pentester.get_payloads(context)
+            return self._quick_scan(tool, quick_payloads)
 
         # RCE-only mode: skip non-RCE categories
         if config.get('rce_only'):
             categories = ['command_injection']
         else:
-            categories = PAYLOAD_PRIORITY + [
-                c for c in PAYLOADS.keys() if c not in PAYLOAD_PRIORITY
-            ]
+            categories = PAYLOAD_PRIORITY
 
         base_args = self._generate_dummy_args(schema)
         seen_payloads = set()
@@ -120,7 +115,16 @@ class ToolInjectionTest:
                 continue
 
             for category in categories:
-                for payload in PAYLOADS[category]:
+                # Get payloads: LLM-generated or static
+                context = {
+                    'tool_name': tool['name'],
+                    'target_type': category,
+                    'schema_hints': schema,
+                    'previous_failure': None
+                }
+                payloads = self.pentester.get_payloads(context)
+                
+                for payload in payloads:
                     if payload in seen_payloads:
                         continue
                     seen_payloads.add(payload)

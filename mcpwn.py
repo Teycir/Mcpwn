@@ -31,6 +31,8 @@ def main():
                         help='Focus on RCE detection only (fast)')
     parser.add_argument('--quick', action='store_true',
                         help='Quick scan with minimal payloads')
+    parser.add_argument('--llm-generate', action='store_true',
+                        help='Enable LLM-guided payload generation')
 
     try:
         args = parser.parse_args()
@@ -52,7 +54,8 @@ def main():
             'output_json': args.output_json,
             'output_html': args.output_html,
             'rce_only': args.rce_only,
-            'quick': args.quick
+            'quick': args.quick,
+            'generation_mode': args.llm_generate
         })
         pentester.run()
     except Exception as e:
