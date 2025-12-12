@@ -62,7 +62,7 @@ class SubscriptionFloodTest:
         try:
             self.pentester.send("tools/list")
             return time.time() - start
-        except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        except (OSError, ValueError, TypeError, AttributeError, KeyError, RuntimeError, TimeoutError) as e:
             return None
 
     def _is_alive(self):

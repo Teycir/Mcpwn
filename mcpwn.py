@@ -40,7 +40,9 @@ def main():
 
     try:
         args = parser.parse_args()
-    except SystemExit:
+    except (SystemExit, Exception) as e:
+        logger = logging.getLogger('mcpwn')
+        logger.error("Argument parsing failed: %s", e)
         return 1
 
     logger = logging.getLogger('mcpwn')

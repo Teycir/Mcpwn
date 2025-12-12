@@ -1,4 +1,5 @@
 """State desynchronization tests"""
+import logging
 
 
 class StateDesyncTest:
@@ -27,20 +28,21 @@ class StateDesyncTest:
             if isinstance(resp, dict) and 'result' in resp:
                 findings.append({
                     'type': 'STATE_BYPASS',
-                    'detail': 'tools/list executed without initialize handshake',
+                    'detail': 'tools/list executed without initialize',
                     'severity': 'HIGH'
                 })
             elif isinstance(resp, dict) and 'error' not in resp:
                 findings.append({
                     'type': 'STATE_BYPASS',
-                    'detail': 'Server ignored uninitialized state (no error returned)',
+                    'detail': 'Server ignored uninitialized state',
                     'severity': 'MEDIUM'
                 })
-        except (RuntimeError, IOError, OSError):
+        except (RuntimeError, IOError, OSError, TimeoutError) as e:
+            logging.debug("Skip initialize test error: %s", e)
             if not self.pentester.is_alive():
                 findings.append({
                     'type': 'STATE_CRASH',
-                    'detail': 'Server crashed on uninitialized tools/list call',
+                    'detail': f'Server crashed on uninitialized call: {e}',
                     'severity': 'CRITICAL'
                 })
         finally:
@@ -66,11 +68,12 @@ class StateDesyncTest:
                     'detail': 'Server accepted double initialization',
                     'severity': 'MEDIUM'
                 })
-        except (RuntimeError, IOError, OSError):
+        except (RuntimeError, IOError, OSError, TimeoutError) as e:
+            logging.debug("Double initialize test error: %s", e)
             if not self.pentester.is_alive():
                 findings.append({
                     'type': 'STATE_CRASH',
-                    'detail': 'Server crashed on double initialization',
+                    'detail': f'Server crashed on double init: {e}',
                     'severity': 'CRITICAL'
                 })
         finally:
@@ -80,4 +83,8 @@ class StateDesyncTest:
     def _cleanup(self):
         """Safely terminate process"""
         if not self.pentester.is_alive():
-            self.pentester.restart_server()
+            try:
+                self.pentester.restart_server()
+            except (RuntimeError, OSError, TimeoutError) as e:
+                logging.debug("Cleanup restart failed: %s", e)
+                return

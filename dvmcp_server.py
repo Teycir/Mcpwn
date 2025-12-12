@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """DVMCP - Damn Vulnerable MCP Server for testing Mcpwn"""
 import json
-import sys
-import subprocess
 import os
+import subprocess
+import sys
 
 
 def send_response(response):
