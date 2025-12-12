@@ -37,8 +37,12 @@ class StateDesyncTest:
                     'severity': 'MEDIUM'
                 })
         except (RuntimeError, IOError, OSError):
-            # Connection drop is secure behavior
-            pass
+            if not self.pentester.is_alive():
+                findings.append({
+                    'type': 'STATE_CRASH',
+                    'detail': 'Server crashed on uninitialized tools/list call',
+                    'severity': 'CRITICAL'
+                })
         finally:
             self._cleanup()
         return findings
@@ -63,8 +67,12 @@ class StateDesyncTest:
                     'severity': 'MEDIUM'
                 })
         except (RuntimeError, IOError, OSError):
-            # Connection drop is secure behavior
-            pass
+            if not self.pentester.is_alive():
+                findings.append({
+                    'type': 'STATE_CRASH',
+                    'detail': 'Server crashed on double initialization',
+                    'severity': 'CRITICAL'
+                })
         finally:
             self._cleanup()
         return findings

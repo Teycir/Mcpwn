@@ -11,8 +11,9 @@ class SSRFTest:
     def __init__(self, pentester):
         self.pentester = pentester
         self.server = None
-        self.server_port = 8888  # Add default port
+        self.server_port = 8888
         self.captured_callbacks = {}
+        self.callbacks_lock = threading.Lock()
         
     SSRF_PAYLOADS = [
         # Localhost probing
@@ -40,18 +41,28 @@ class SSRFTest:
             def do_GET(self):
                 if '/callback/' in self.path:
                     token = self.path.split('/callback/')[-1].split('/')[0]
-                    parent.captured_callbacks[token] = {
-                        'path': self.path,
-                        'headers': dict(self.headers),
-                        'time': time.time()
-                    }
+                    with parent.callbacks_lock:
+                        parent.captured_callbacks[token] = {
+                            'path': self.path,
+                            'headers': dict(self.headers),
+                            'time': time.time()
+                        }
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(b'SSRF-CONFIRMED')
             
             def log_message(self, *args): pass
         
-        self.server = HTTPServer(('0.0.0.0', self.server_port), CallbackHandler)
+        # Try OS-assigned port first, then increment if in use
+        port = 0
+        for attempt in range(10):
+            try:
+                self.server = HTTPServer(('0.0.0.0', port), CallbackHandler)
+                self.server_port = self.server.server_address[1]
+                break
+            except OSError:
+                port = 8888 + attempt
+        
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
     
@@ -82,15 +93,16 @@ class SSRFTest:
                     params = {"name": tool['name'], "arguments": {arg: payload}}
                     resp, _ = self.pentester.send("tools/call", params)
                     
-                    if token in self.captured_callbacks:
-                        findings.append({
-                            'type': 'SSRF_CALLBACK',
-                            'tool': tool['name'],
-                            'arg': arg,
-                            'payload': payload,
-                            'callback_data': self.captured_callbacks[token],
-                            'severity': 'CRITICAL'
-                        })
+                    with self.callbacks_lock:
+                        if token in self.captured_callbacks:
+                            findings.append({
+                                'type': 'SSRF_CALLBACK',
+                                'tool': tool['name'],
+                                'arg': arg,
+                                'payload': payload,
+                                'callback_data': self.captured_callbacks[token],
+                                'severity': 'CRITICAL'
+                            })
                     
                     content = str(resp)
                     if self._detect_ssrf_response(content, payload):

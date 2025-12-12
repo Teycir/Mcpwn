@@ -60,12 +60,37 @@ class ToolInjectionTest:
             return result
         return {}
 
+    def _parse_path(self, path):
+        """Parse path into keys, handling array indices and dots in key names"""
+        keys = []
+        i = 0
+        current_key = ""
+        while i < len(path):
+            if path[i] == '[':
+                if current_key:
+                    keys.append(current_key)
+                    current_key = ""
+                j = i + 1
+                while j < len(path) and path[j] != ']':
+                    j += 1
+                keys.append(int(path[i+1:j]))
+                i = j + 1
+            elif path[i] == '.':
+                if current_key:
+                    keys.append(current_key)
+                    current_key = ""
+                i += 1
+            else:
+                current_key += path[i]
+                i += 1
+        if current_key:
+            keys.append(current_key)
+        return keys
+
     def _inject_value(self, base_args, path, value):
         """Inject payload into base_args at path (supports dot and array notation)"""
         data = copy.deepcopy(base_args)
-        keys = []
-        for part in path.replace('[', '.').replace(']', '').split('.'):
-            keys.append(int(part) if part.isdigit() else part)
+        keys = self._parse_path(path)
         
         current = data
         for i, key in enumerate(keys[:-1]):

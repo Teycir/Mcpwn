@@ -32,6 +32,8 @@ class SubscriptionFloodTest:
                 'detail': f'Flood error: {str(e)}',
                 'severity': 'LOW'
             })
+        finally:
+            self.pentester.restart_server()
         
         post_flood = self._measure_latency()
         
