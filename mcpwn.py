@@ -1,6 +1,7 @@
 """Mcpwn - MCP Security Testing Framework"""
 import argparse
 import logging
+import sys
 from core import MCPPentester
 
 logging.basicConfig(
@@ -13,8 +14,6 @@ def main():
     parser = argparse.ArgumentParser(
         description='MCP Security Testing Framework'
     )
-    parser.add_argument('server_cmd', nargs='+',
-                        help='MCP server command')
     parser.add_argument('--safe-mode', action='store_true',
                         help='Skip destructive tests')
     parser.add_argument('--tags', nargs='+',
@@ -37,6 +36,8 @@ def main():
                         help='Enable LLM-guided payload generation')
     parser.add_argument('--api-key', type=str,
                         help='API key for LLM (or set ANTHROPIC_API_KEY/GEMINI_API_KEY env var)')
+    parser.add_argument('server_cmd', nargs=argparse.REMAINDER,
+                        help='MCP server command')
 
     try:
         args = parser.parse_args()

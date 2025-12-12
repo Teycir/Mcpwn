@@ -1,15 +1,146 @@
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
+*.py[cod]
+*$py.class
 *.so
-*.egg
-*.egg-info/
-dist/
+.Python
 build/
-*.log
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
 .vscode/
 .idea/
-*.json
-*.html
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*.backup
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+.directory
+
+# Reports and test data
+reports/
+test_data/
+/tmp/
+*.json.bak
+
+# Credentials and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+secrets.json
+credentials.json
+
+# MCP specific
+*.sock
+*.pid
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Node modules (for npm-based MCP servers)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache
+.cache/
+*.cache
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencies
+vendor/
+.bundle/
+
+# Generated files
+*.generated.py
+*.auto.py
+
+# Test outputs
+test_results/
+test_output/
+coverage/
+
+# Temporary test files
+/tmp/
+/temp/
+*.tmp
+
+# Keep scripts
+!scripts/
+!scripts/*.py
+!scripts/*.sh
+
+# Keep tests
+!tests/
+!tests/*.py
+!tests/scripts/
+
+# Keep documentation
+!*.md
+!README.md
+!FINAL_STRUCTURE.md
+!REPORTS_READY.md
+!PROJECT_COMPLETE.md
+reports/test_data
+docs

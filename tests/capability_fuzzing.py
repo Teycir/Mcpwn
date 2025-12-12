@@ -4,7 +4,7 @@
 class CapabilityFuzzingTest:
     """Test malformed capabilities during protocol negotiation"""
     
-    OVERSIZED_LIST_THRESHOLD = 1000
+    OVERSIZED_LIST_THRESHOLD = 100
     
     def __init__(self, pentester):
         self.pentester = pentester
@@ -19,7 +19,7 @@ class CapabilityFuzzingTest:
         {"constructor": {}},
         {"../../../etc": {}},
         # Oversized lists
-        {"tools": {"listChanged": True} * OVERSIZED_LIST_THRESHOLD},
+        {"tools": [{"listChanged": True}] * OVERSIZED_LIST_THRESHOLD},
         # Nested pollution
         {"tools": {"subscribe": {"__proto__": {"polluted": True}}}},
         # Null/undefined injection

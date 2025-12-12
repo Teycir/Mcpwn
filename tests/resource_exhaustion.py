@@ -252,53 +252,6 @@ class ResourceExhaustionTest:
             })
         
         return findings
-            try:
-                start = time.time()
-                params = {"name": tool['name'], "arguments": {}}
-                resp, _ = self.pentester.send("tools/call", params)
-                return time.time() - start, resp is not None
-            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                logging.debug(f"Parallel flood request error: {e}")
-                return None, str(e)
-        
-        try:
-            baseline, _ = make_request()
-            if baseline is None:
-                return findings
-            
-            with ThreadPoolExecutor(max_workers=50) as executor:
-                futures = [executor.submit(make_request) for _ in range(100)]
-                results = [f.result() for f in as_completed(futures)]
-            
-            successes = [r[0] for r in results if r[0] is not None]
-            failures = [r[1] for r in results if r[0] is None]
-            
-            if failures:
-                findings.append({
-                    'type': 'CONCURRENT_REQUEST_FAILURES',
-                    'tool': tool['name'],
-                    'severity': 'HIGH',
-                    'note': f'{len(failures)}/100 requests failed under load'
-                })
-            
-            if successes:
-                avg_time = sum(successes) / len(successes)
-                if avg_time > baseline * 5:
-                    findings.append({
-                        'type': 'CONCURRENCY_DEGRADATION',
-                        'tool': tool['name'],
-                        'severity': 'MEDIUM',
-                        'note': f'Avg response: {avg_time:.2f}s vs baseline {baseline:.2f}s'
-                    })
-        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-            findings.append({
-                'type': 'PARALLEL_FLOOD_CRASH',
-                'tool': tool['name'],
-                'severity': 'CRITICAL',
-                'note': str(e)[:100]
-            })
-        
-        return findings
     
     def _test_connection_exhaustion(self, tool):
         """Test connection pool starvation"""

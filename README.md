@@ -79,7 +79,7 @@ python mcpwn.py --llm-generate --api-key sk-or-v1-... npx ...
 python mcpwn.py --output-sarif report.sarif npx ...
 
 # Test against vulnerable server
-python mcpwn.py python3 dvmcp_server.py
+python mcpwn.py python3 test_data/dvmcp_server.py
 ```
 
 ## Example Output
@@ -225,7 +225,7 @@ python mcpwn.py --safe-mode ...
 
 Use the included vulnerable server:
 ```bash
-python mcpwn.py python3 dvmcp_server.py
+python mcpwn.py python3 test_data/dvmcp_server.py
 ```
 
 Expected findings:
