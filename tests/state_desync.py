@@ -24,10 +24,21 @@ class StateDesyncTest:
         self.pentester.start()
         try:
             resp, _ = self.pentester.send("tools/list")
-            if 'error' not in resp:
-                findings.append("VULN: tools/list works without initialize")
-        except (RuntimeError, IOError, OSError) as e:
-            print(f"[!] Skip initialize test error: {e}")
+            if isinstance(resp, dict) and 'result' in resp:
+                findings.append({
+                    'type': 'STATE_BYPASS',
+                    'detail': 'tools/list executed without initialize handshake',
+                    'severity': 'HIGH'
+                })
+            elif isinstance(resp, dict) and 'error' not in resp:
+                findings.append({
+                    'type': 'STATE_BYPASS',
+                    'detail': 'Server ignored uninitialized state (no error returned)',
+                    'severity': 'MEDIUM'
+                })
+        except (RuntimeError, IOError, OSError):
+            # Connection drop is secure behavior
+            pass
         finally:
             self._cleanup()
         return findings
@@ -40,14 +51,20 @@ class StateDesyncTest:
             init_params = {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {}
+                "clientInfo": {"name": "audit-tool", "version": "1.0"}
             }
             self.pentester.send("initialize", init_params)
+            self.pentester.send_notification("notifications/initialized")
             resp, _ = self.pentester.send("initialize", init_params)
-            if 'error' not in resp:
-                findings.append("VULN: Double initialize accepted")
-        except (RuntimeError, IOError, OSError) as e:
-            print(f"[!] Double initialize test error: {e}")
+            if isinstance(resp, dict) and 'result' in resp:
+                findings.append({
+                    'type': 'STATE_RESET',
+                    'detail': 'Server accepted double initialization',
+                    'severity': 'MEDIUM'
+                })
+        except (RuntimeError, IOError, OSError):
+            # Connection drop is secure behavior
+            pass
         finally:
             self._cleanup()
         return findings

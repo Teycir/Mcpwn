@@ -1,10 +1,11 @@
 """Race condition and TOCTOU vulnerability tests for MCP servers"""
 import threading
-import time
+import random
+import uuid
 
 
 class RaceConditionTest:
-    """TOCTOU and concurrent access vulnerabilities"""
+    """Tests for uniqueness constraints and concurrency stability"""
     
     def __init__(self, pentester):
         self.pentester = pentester
@@ -12,129 +13,127 @@ class RaceConditionTest:
     def run(self, tool):
         """Test for race conditions"""
         findings = []
-        findings.extend(self._test_double_spend(tool))
-        findings.extend(self._test_state_corruption(tool))
-        findings.extend(self._test_resource_locking(tool))
+        if not tool.get('inputSchema'):
+            return findings
+        findings.extend(self._test_creation_collision(tool))
+        findings.extend(self._test_concurrency_stability(tool))
         return findings
     
-    def _test_double_spend(self, tool):
-        """Test parallel identical requests (double-spend scenarios)"""
-        findings = []
+    def _generate_payload(self, tool, overrides=None):
+        """Generate valid payload from schema"""
+        overrides = overrides or {}
         schema = tool.get('inputSchema', {})
+        args = {}
         
-        # Look for financial/state-changing operations
+        for prop, spec in schema.get('properties', {}).items():
+            if prop in overrides:
+                args[prop] = overrides[prop]
+            elif spec.get('type') == 'string':
+                args[prop] = 'test'
+            elif spec.get('type') in ['integer', 'number']:
+                args[prop] = 10
+            elif spec.get('type') == 'boolean':
+                args[prop] = True
+        
+        return {"name": tool['name'], "arguments": args}
+    
+    def _execute_race(self, func_with_args, count=10):
+        """Execute requests with tight synchronization (pre-generated payloads)"""
+        barrier = threading.Barrier(count)
+        results = [None] * count
+        threads = []
+
+        def worker(idx):
+            barrier.wait()
+            try:
+                results[idx] = func_with_args()
+            except Exception as e:
+                results[idx] = {'error': str(e)}
+
+        for i in range(count):
+            t = threading.Thread(target=worker, args=(i,))
+            threads.append(t)
+            t.start()
+
+        for t in threads:
+            t.join()
+        
+        return results
+    
+    def _test_creation_collision(self, tool):
+        """Test if multiple threads can create the SAME resource (uniqueness constraint)"""
+        findings = []
         tool_name = tool['name'].lower()
-        if any(k in tool_name for k in ['create', 'delete', 'update', 'transfer', 'withdraw', 'purchase', 'claim']):
-            results = []
-            errors = []
-            
-            def make_request():
-                try:
-                    params = {"name": tool['name'], "arguments": {}}
-                    resp, _ = self.pentester.send("tools/call", params)
-                    results.append(resp)
-                except Exception as e:
-                    errors.append(str(e))
-            
-            # Fire 5 parallel identical requests
-            threads = [threading.Thread(target=make_request) for _ in range(5)]
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join()
-            
-            # Check if multiple succeeded (should have locking/idempotency)
-            success_count = sum(1 for r in results if r and 'error' not in str(r).lower())
-            if success_count > 1:
-                findings.append({
-                    'type': 'DOUBLE_SPEND',
-                    'tool': tool['name'],
-                    'severity': 'CRITICAL',
-                    'note': f'{success_count}/5 parallel requests succeeded',
-                    'detail': 'Missing idempotency or locking mechanism'
-                })
+        
+        if not any(k in tool_name for k in ['create', 'insert', 'register', 'make', 'add']):
+            return findings
+
+        schema = tool.get('inputSchema', {})
+        target_arg = None
+        for arg in schema.get('properties', {}):
+            if any(k in arg.lower() for k in ['path', 'name', 'id', 'key', 'email']):
+                target_arg = arg
+                break
+        
+        if not target_arg:
+            return findings
+
+        # All threads attempt to create the SAME resource
+        collision_val = f"race_collision_{uuid.uuid4().hex[:6]}"
+        payload = self._generate_payload(tool, {target_arg: collision_val})
+        
+        def send_request():
+            resp, _ = self.pentester.send("tools/call", payload)
+            return resp
+
+        results = self._execute_race(send_request, count=5)
+        
+        # Count successes (no error/exists message)
+        success_count = sum(1 for r in results 
+                          if 'error' not in str(r).lower() and 'exist' not in str(r).lower())
+
+        if success_count > 1:
+            findings.append({
+                'type': 'RACE_CREATION_COLLISION',
+                'tool': tool['name'],
+                'severity': 'HIGH',
+                'note': f'{success_count}/5 threads created resource "{collision_val}"',
+                'detail': 'Missing uniqueness locking (O_EXCL/INSERT checks)'
+            })
         
         return findings
     
-    def _test_state_corruption(self, tool):
-        """Test state corruption via interleaved operations"""
+    def _test_concurrency_stability(self, tool):
+        """Test for database locks and internal errors under concurrent load"""
         findings = []
-        schema = tool.get('inputSchema', {})
         
-        # Look for stateful parameters (counters, balances, etc.)
-        for arg, spec in schema.get('properties', {}).items():
-            if any(k in arg.lower() for k in ['count', 'amount', 'balance', 'quantity', 'limit']):
-                results = []
-                
-                def increment_request(value):
-                    try:
-                        params = {"name": tool['name'], "arguments": {arg: value}}
-                        resp, _ = self.pentester.send("tools/call", params)
-                        results.append((value, resp))
-                    except Exception:
-                        pass
-                
-                # Interleave operations: set to 1, 2, 3 concurrently
-                threads = [threading.Thread(target=increment_request, args=(i,)) for i in [1, 2, 3]]
-                for t in threads:
-                    t.start()
-                for t in threads:
-                    t.join()
-                
-                # Check for inconsistent state (all succeeded but final state unknown)
-                if len(results) == 3:
-                    findings.append({
-                        'type': 'STATE_CORRUPTION',
-                        'tool': tool['name'],
-                        'arg': arg,
-                        'severity': 'HIGH',
-                        'note': 'Concurrent state modifications accepted without serialization'
-                    })
-                    break
+        payload = self._generate_payload(tool)
         
-        return findings
-    
-    def _test_resource_locking(self, tool):
-        """Test resource locking bypass via TOCTOU"""
-        findings = []
-        schema = tool.get('inputSchema', {})
+        def send_request():
+            resp, _ = self.pentester.send("tools/call", payload)
+            return resp
+
+        results = self._execute_race(send_request, count=10)
         
-        # Look for resource identifiers
-        for arg, spec in schema.get('properties', {}).items():
-            if any(k in arg.lower() for k in ['file', 'path', 'resource', 'id', 'name']):
-                resource_id = 'test_resource_123'
-                results = []
-                timings = []
-                
-                def access_resource():
-                    try:
-                        start = time.time()
-                        params = {"name": tool['name'], "arguments": {arg: resource_id}}
-                        resp, _ = self.pentester.send("tools/call", params)
-                        elapsed = time.time() - start
-                        results.append(resp)
-                        timings.append(elapsed)
-                    except Exception:
-                        pass
-                
-                # Attempt concurrent access to same resource
-                threads = [threading.Thread(target=access_resource) for _ in range(3)]
-                for t in threads:
-                    t.start()
-                for t in threads:
-                    t.join()
-                
-                # If all succeeded quickly, locking may be missing
-                success_count = sum(1 for r in results if r and 'lock' not in str(r).lower() and 'busy' not in str(r).lower())
-                if success_count > 1 and timings and max(timings) < 1.0:
-                    findings.append({
-                        'type': 'RESOURCE_LOCKING_BYPASS',
-                        'tool': tool['name'],
-                        'arg': arg,
-                        'severity': 'HIGH',
-                        'note': f'{success_count}/3 concurrent accesses to same resource succeeded',
-                        'detail': 'Missing or ineffective resource locking'
-                    })
-                    break
+        lock_errors = [r for r in results if 'lock' in str(r).lower() or 'busy' in str(r).lower()]
+        internal_errors = [r for r in results if 'internal error' in str(r).lower()]
         
+        if lock_errors:
+            findings.append({
+                'type': 'UNHANDLED_DB_LOCK',
+                'tool': tool['name'],
+                'severity': 'MEDIUM',
+                'note': 'Server exposed database locking errors',
+                'detail': str(lock_errors[0])[:100]
+            })
+            
+        if internal_errors:
+            findings.append({
+                'type': 'CONCURRENCY_CRASH',
+                'tool': tool['name'],
+                'severity': 'HIGH',
+                'note': 'Server threw internal errors under load',
+                'detail': str(internal_errors[0])[:100]
+            })
+
         return findings

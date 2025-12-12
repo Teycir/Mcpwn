@@ -1,5 +1,6 @@
 """Server-Side Request Forgery tests via MCP tools"""
 import threading
+import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
@@ -8,8 +9,9 @@ class SSRFTest:
     
     def __init__(self, pentester):
         self.pentester = pentester
-        self.callback_received = False
-        self.callback_data = None
+        self.captured_callbacks = {}
+        self.server = None
+        self.server_port = None
         
     SSRF_PAYLOADS = [
         # Localhost probing
@@ -29,67 +31,66 @@ class SSRFTest:
         "gopher://127.0.0.1:6379/_INFO",
     ]
     
-    def _start_listener(self, port):
-        """Start HTTP listener to detect callbacks"""
+    def _start_persistent_listener(self):
+        """Start single HTTP listener for entire scan"""
         test = self
         
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
-                test.callback_received = True
-                test.callback_data = {
+                token = self.path.split('/')[-1]
+                test.captured_callbacks[token] = {
                     'path': self.path,
-                    'headers': dict(self.headers)
+                    'headers': dict(self.headers),
+                    'client_ip': self.client_address[0]
                 }
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(b"SSRF-CONFIRMED")
             
             def log_message(self, *args):
-                pass  # Suppress logging
+                pass
         
-        self.server = HTTPServer(('127.0.0.1', port), Handler)
-        thread = threading.Thread(target=self.server.handle_request, daemon=True)
+        self.server = HTTPServer(('127.0.0.1', 0), Handler)
+        self.server_port = self.server.server_address[1]
+        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
-        return thread
     
     def run(self, tool):
         """Test tool arguments for SSRF vulnerabilities"""
         self.pentester.health_check()
         findings = []
-        port = 18273  # Random high port
+        
+        if not self.server:
+            self._start_persistent_listener()
         
         schema = tool.get('inputSchema', {})
         url_args = self._find_url_args(schema)
         
         for arg in url_args:
             for payload_template in self.SSRF_PAYLOADS:
-                self.callback_received = False
-                payload = payload_template.format(port=port) if '{port}' in payload_template else payload_template
+                token = str(uuid.uuid4())[:8]
                 
-                # Start listener for callback-based detection
                 if '{port}' in payload_template:
-                    try:
-                        listener = self._start_listener(port)
-                    except OSError as e:
-                        print(f"[!] Failed to start SSRF listener: {e}")
-                        continue
+                    payload = payload_template.format(port=self.server_port)
+                    if payload.startswith('http'):
+                        payload = payload.rstrip('/') + f'/callback/{token}'
+                else:
+                    payload = payload_template
                 
                 try:
                     params = {"name": tool['name'], "arguments": {arg: payload}}
                     resp, _ = self.pentester.send("tools/call", params)
                     
-                    # Check callback-based SSRF
-                    if self.callback_received:
+                    if token in self.captured_callbacks:
                         findings.append({
                             'type': 'SSRF_CALLBACK',
                             'tool': tool['name'],
                             'arg': arg,
                             'payload': payload,
-                            'callback_data': self.callback_data,
+                            'callback_data': self.captured_callbacks[token],
                             'severity': 'CRITICAL'
                         })
                     
-                    # Check response-based SSRF (cloud metadata)
                     content = str(resp)
                     if self._detect_ssrf_response(content, payload):
                         findings.append({
@@ -102,13 +103,6 @@ class SSRFTest:
                         })
                 except Exception as e:
                     print(f"[!] SSRF test error for {tool['name']}.{arg}: {e}")
-                finally:
-                    # Cleanup listener
-                    if hasattr(self, 'server'):
-                        try:
-                            self.server.server_close()
-                        except Exception:
-                            pass
         
         return findings
     

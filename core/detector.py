@@ -1,5 +1,8 @@
 """Semantic Detection Engine - Identifies successful exploits"""
+import logging
 from payloads import INDICATORS, TimingAnalyzer
+
+logger = logging.getLogger(__name__)
 
 
 class SemanticDetector:
@@ -12,8 +15,8 @@ class SemanticDetector:
         """Detect exploitation indicators in response"""
         try:
             content = str(response) if response else ""
-        except Exception as e:
-            print(f"[!] Response serialization error: {e}")
+        except (TypeError, ValueError, AttributeError) as e:
+            logger.error("Response serialization error: %s", e)
             content = ""
 
         # Record baseline timing
@@ -48,8 +51,9 @@ class SemanticDetector:
                     'type': 'TIMING',
                     'elapsed': elapsed_time
                 })
-        except Exception as e:
-            print(f"[!] Detection analysis error: {e}")
+        except (AttributeError, KeyError, TypeError) as e:
+            logger.error("Detection analysis error: %s", e)
+            return False
 
         return len(self.findings) > 0
 

