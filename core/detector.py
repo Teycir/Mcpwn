@@ -57,6 +57,13 @@ class SemanticDetector:
         except (AttributeError, TypeError, ValueError) as e:
             logger.warning("Timing analysis failed: %s", e)
 
+        # OOB DNS detection (captured externally)
+        if 'oob.local' in content.lower():
+            self.findings.append({
+                'type': 'OOB_DNS',
+                'indicator': 'DNS exfiltration domain'
+            })
+
         return len(self.findings) > 0
 
     def report(self):

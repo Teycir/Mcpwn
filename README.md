@@ -65,8 +65,6 @@ python mcpwn.py --llm-generate npx -y @modelcontextprotocol/server-filesystem /t
 
 **Tier 3 (Implemented)**
 - LLM-guided payload generation (context-aware synthesis)
-
-**Tier 3 (Planned)**
 - OOB detection (DNS exfiltration)
 - Race condition testing
 - Resource exhaustion
@@ -78,6 +76,7 @@ Semantic indicators, not crashes:
 - `-----BEGIN`, `PRIVATE KEY` → File read
 - Statistical timing deviation → Blind injection
 - Prompt echo → Indirect prompt injection
+- DNS query capture → OOB exfiltration
 
 ## Architecture
 
@@ -101,6 +100,7 @@ Mcpwn/
     ├── deserialization.py     # Pickle/YAML/JSON gadgets
     ├── schema_pollution.py
     ├── auth_bypass.py
+    ├── oob_detection.py       # DNS exfiltration listener
     ├── race_condition.py
     └── resource_exhaustion.py
 ```
