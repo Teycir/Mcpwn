@@ -124,8 +124,9 @@ class LLMPayloadGenerator:
                         raise ValueError("Empty response from Gemini")
                     content = response.text
                 elif self.provider == 'openrouter':
+                    openrouter_model = self.config.get('openrouter_model', 'meta-llama/llama-3.1-8b-instruct:free')
                     response = self.client.chat.completions.create(
-                        model="meta-llama/llama-3.1-8b-instruct:free",
+                        model=openrouter_model,
                         messages=[{"role": "user", "content": prompt}]
                     )
                     if not response.choices:
