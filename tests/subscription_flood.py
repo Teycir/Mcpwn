@@ -19,6 +19,9 @@ class SubscriptionFloodTest:
                 self.pentester.send("resources/subscribe",
                                     {"uri": f"file:///tmp/flood_{i}.txt"})
                 
+                if i % 100 == 0 and i > 0:
+                    self.pentester.clear_subscription_state()
+                
                 if i > 0 and i % 500 == 0 and not self._is_alive():
                     findings.append({
                         'type': 'DOS_CRASH',

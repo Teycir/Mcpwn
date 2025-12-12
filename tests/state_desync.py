@@ -79,4 +79,5 @@ class StateDesyncTest:
 
     def _cleanup(self):
         """Safely terminate process"""
-        self.pentester.restart_server()
+        if not self.pentester.is_alive():
+            self.pentester.restart_server()
