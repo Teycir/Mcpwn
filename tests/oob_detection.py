@@ -89,15 +89,21 @@ class OOBTest:
                     params = {"name": tool['name'], "arguments": {arg: payload}}
                     self.pentester.send("tools/call", params)
                     
-                    time.sleep(2)
+                    # Poll for DNS query with timeout
+                    captured = None
+                    for _ in range(10):
+                        captured = self.captured_queries.get(token)
+                        if captured:
+                            break
+                        time.sleep(0.2)
                     
-                    if self.captured_queries.get(token):
+                    if captured:
                         findings.append({
                             'type': 'OOB_DNS',
                             'tool': tool['name'],
                             'arg': arg,
                             'payload': payload,
-                            'dns_query': self.captured_queries[token]['query'],
+                            'dns_query': captured['query'],
                             'severity': 'CRITICAL'
                         })
                 except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
@@ -112,4 +118,9 @@ class OOBTest:
     def cleanup(self):
         """Stop DNS listener"""
         if self.dns_server:
-            self.dns_server.shutdown()
+            try:
+                self.dns_server.shutdown()
+            except Exception as e:
+                logging.debug(f"Error during DNS listener cleanup: {e}")
+            finally:
+                self.dns_server = None

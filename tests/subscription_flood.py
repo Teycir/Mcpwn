@@ -26,7 +26,7 @@ class SubscriptionFloodTest:
                         'severity': 'CRITICAL'
                     })
                     return findings
-        except Exception as e:
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
             findings.append({
                 'type': 'DOS_ERROR',
                 'detail': f'Flood error: {str(e)}',
@@ -58,7 +58,7 @@ class SubscriptionFloodTest:
         try:
             self.pentester.send("tools/list")
             return time.time() - start
-        except:
+        except (OSError, ValueError, TypeError, AttributeError, KeyError):
             return None
 
     def _is_alive(self):

@@ -4,6 +4,8 @@
 class CapabilityFuzzingTest:
     """Test malformed capabilities during protocol negotiation"""
     
+    OVERSIZED_LIST_THRESHOLD = 1000
+    
     def __init__(self, pentester):
         self.pentester = pentester
     
@@ -17,7 +19,7 @@ class CapabilityFuzzingTest:
         {"constructor": {}},
         {"../../../etc": {}},
         # Oversized lists
-        {"tools": {"listChanged": True} * 1000},
+        {"tools": {"listChanged": True} * OVERSIZED_LIST_THRESHOLD},
         # Nested pollution
         {"tools": {"subscribe": {"__proto__": {"polluted": True}}}},
         # Null/undefined injection
@@ -28,6 +30,7 @@ class CapabilityFuzzingTest:
     def run(self):
         """Test capability fuzzing"""
         findings = []
+        dos_threshold = 5  # seconds
         
         for cap in self.FUZZ_CAPABILITIES:
             try:
@@ -50,7 +53,7 @@ class CapabilityFuzzingTest:
                     })
                 
                 # Check for crash indicators
-                if elapsed > 5 or not resp:
+                if elapsed > dos_threshold or not resp:
                     findings.append({
                         'type': 'CAPABILITY_DOS',
                         'severity': 'MEDIUM',

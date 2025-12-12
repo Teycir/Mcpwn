@@ -5,7 +5,10 @@ echo "=== Testing Mcpwn against DVMCP ==="
 echo ""
 
 echo "[1/4] Testing basic scan..."
-python3 mcpwn.py --quick python3 dvmcp_server.py 2>&1 | head -20
+if ! python3 mcpwn.py --quick python3 dvmcp_server.py 2>&1 | head -20; then
+    echo "✗ Basic scan failed"
+    exit 1
+fi
 
 echo ""
 echo "[2/4] Testing JSON report generation..."
@@ -41,4 +44,5 @@ fi
 
 echo ""
 echo "=== Test complete ==="
-echo "Cleanup: rm /tmp/mcpwn_test.*"
+rm -f /tmp/mcpwn_test.* 2>/dev/null
+echo "✓ Cleanup complete"

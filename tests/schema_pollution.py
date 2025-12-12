@@ -1,5 +1,6 @@
 """Schema/prototype pollution attacks via MCP tools"""
 import json
+import logging
 
 
 class SchemaPollutionTest:
@@ -67,8 +68,8 @@ class SchemaPollutionTest:
                         'severity': 'HIGH',
                         'note': 'Potential prototype/schema pollution detected'
                     })
-            except (RuntimeError, IOError, OSError, KeyError) as e:
-                print(f"[!] Schema pollution test error for {tool['name']}.{arg}: {e}")
+            except (RuntimeError, IOError, OSError, KeyError, ValueError, TypeError, AttributeError) as e:
+                logging.debug(f"Schema pollution test error for {tool['name']}.{arg}: {e}")
         
         return findings
     
@@ -91,8 +92,8 @@ class SchemaPollutionTest:
                         'severity': 'CRITICAL',
                         'note': 'Root-level pollution successful'
                     })
-            except (RuntimeError, IOError, OSError, KeyError) as e:
-                print(f"[!] Root pollution test error for {tool['name']}: {e}")
+            except (RuntimeError, IOError, OSError, KeyError, ValueError, TypeError, AttributeError) as e:
+                logging.debug(f"Root pollution test error for {tool['name']}: {e}")
         
         return findings
     

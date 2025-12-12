@@ -64,6 +64,9 @@ class SSRFTest:
             except OSError as e:
                 logging.debug(f"Port {port} unavailable: {e}")
                 port = 8888 + attempt
+            except Exception as e:
+                logging.error(f"Unexpected error binding port {port}: {e}")
+                return
         
         if not self.server:
             logging.error("Failed to start SSRF listener on any port")
@@ -150,6 +153,10 @@ class SSRFTest:
     def cleanup(self):
         """Stop HTTP listener and cleanup resources"""
         if self.server:
-            self.server.shutdown()
-            self.server.server_close()
-            self.server = None
+            try:
+                self.server.shutdown()
+                self.server.server_close()
+            except Exception as e:
+                logging.debug(f"Error during SSRF listener cleanup: {e}")
+            finally:
+                self.server = None

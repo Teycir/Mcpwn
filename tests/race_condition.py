@@ -125,7 +125,7 @@ class RaceConditionTest:
 
         results = self._execute_race(send_request, count=10)
         
-        lock_errors = [r for r in results if 'lock' in str(r).lower() or 'busy' in str(r).lower()]
+        lock_errors = [r for r in results if any(x in str(r).lower() for x in ['lock', 'busy'])]
         internal_errors = [r for r in results if 'internal error' in str(r).lower()]
         
         if lock_errors:

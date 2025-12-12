@@ -11,6 +11,20 @@ class SemanticDetector:
         self.findings = []
         self.timing_analyzer = TimingAnalyzer()
 
+    def _detect_patterns(self, content, indicator_key, finding_type):
+        """Detect patterns and add findings"""
+        for pattern in INDICATORS.get(indicator_key, []):
+            try:
+                match = pattern.search(content)
+                if match:
+                    self.findings.append({
+                        'type': finding_type,
+                        'indicator': pattern.pattern,
+                        'match': match.group()
+                    })
+            except (AttributeError, TypeError) as e:
+                logger.warning("%s pattern match failed: %s", finding_type, e)
+
     def analyze(self, response, raw_content, elapsed_time, is_baseline=False):
         """Detect exploitation indicators in response"""
         # Use raw JSON string to avoid Python serialization artifacts
@@ -21,31 +35,9 @@ class SemanticDetector:
             self.timing_analyzer.add_baseline(elapsed_time)
             return False
 
-        # RCE detection (pre-compiled patterns)
-        for pattern in INDICATORS.get('rce_success', []):
-            try:
-                match = pattern.search(content)
-                if match:
-                    self.findings.append({
-                        'type': 'RCE',
-                        'indicator': pattern.pattern,
-                        'match': match.group()
-                    })
-            except (AttributeError, TypeError) as e:
-                logger.warning("RCE pattern match failed: %s", e)
-
-        # File read detection
-        for pattern in INDICATORS.get('file_read', []):
-            try:
-                match = pattern.search(content)
-                if match:
-                    self.findings.append({
-                        'type': 'FILE_READ',
-                        'indicator': pattern.pattern,
-                        'match': match.group()
-                    })
-            except (AttributeError, TypeError) as e:
-                logger.warning("File read pattern match failed: %s", e)
+        # RCE and file read detection
+        self._detect_patterns(content, 'rce_success', 'RCE')
+        self._detect_patterns(content, 'file_read', 'FILE_READ')
 
         # Statistical timing attack detection
         try:
@@ -58,18 +50,17 @@ class SemanticDetector:
             logger.warning("Timing analysis failed: %s", e)
 
         # OOB DNS detection (captured externally)
-        if 'oob.local' in content.lower():
-            self.findings.append({
-                'type': 'OOB_DNS',
-                'indicator': 'DNS exfiltration domain'
-            })
+        try:
+            if content and 'oob.local' in content.lower():
+                self.findings.append({
+                    'type': 'OOB_DNS',
+                    'indicator': 'DNS exfiltration domain'
+                })
+        except (AttributeError, TypeError) as e:
+            logger.warning("OOB DNS detection failed: %s", e)
 
         return len(self.findings) > 0
 
     def report(self):
         """Return all detected findings"""
-        try:
-            return self.findings if self.findings else []
-        except (AttributeError, TypeError) as e:
-            logger.error("Error retrieving findings: %s", e)
-            return []
+        return self.findings if self.findings else []
