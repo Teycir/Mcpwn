@@ -72,10 +72,11 @@ class SSRFTest:
                 
                 if '{port}' in payload_template:
                     payload = payload_template.format(port=self.server_port)
-                    if payload.startswith('http'):
-                        payload = payload.rstrip('/') + f'/callback/{token}'
                 else:
                     payload = payload_template
+                
+                if payload.startswith('http'):
+                    payload = payload.rstrip('/') + f'/callback/{token}'
                 
                 try:
                     params = {"name": tool['name'], "arguments": {arg: payload}}

@@ -1,5 +1,6 @@
 """Mcpwn - MCP Security Testing Framework"""
 import argparse
+import shlex
 from core import MCPPentester
 
 
@@ -29,6 +30,10 @@ def main():
     try:
         args = parser.parse_args()
     except SystemExit:
+        return 1
+
+    if args.timeout <= 0:
+        print("[!] Error: timeout must be positive")
         return 1
 
     try:

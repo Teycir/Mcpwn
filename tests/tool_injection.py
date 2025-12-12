@@ -9,8 +9,16 @@ class ToolInjectionTest:
     def __init__(self, pentester):
         self.pentester = pentester
 
-    def _flatten_schema(self, schema, prefix=""):
+    def _flatten_schema(self, schema, prefix="", visited=None):
         """Recursively flatten nested schema to paths (objects + arrays)"""
+        if visited is None:
+            visited = set()
+        
+        schema_id = id(schema)
+        if schema_id in visited:
+            return
+        visited.add(schema_id)
+        
         try:
             if schema.get('type') in ['string', 'any'] or 'type' not in schema:
                 yield prefix, schema.get('type', 'string')
@@ -20,12 +28,12 @@ class ToolInjectionTest:
                 props = schema.get('properties', {})
                 for key, sub_schema in props.items():
                     new_prefix = f"{prefix}.{key}" if prefix else key
-                    yield from self._flatten_schema(sub_schema, new_prefix)
+                    yield from self._flatten_schema(sub_schema, new_prefix, visited)
             
             elif schema.get('type') == 'array':
                 items = schema.get('items', {})
                 new_prefix = f"{prefix}[0]"
-                yield from self._flatten_schema(items, new_prefix)
+                yield from self._flatten_schema(items, new_prefix, visited)
         except (AttributeError, TypeError):
             return
 
@@ -37,7 +45,17 @@ class ToolInjectionTest:
             properties = schema.get('properties', {})
             for key in required:
                 if key in properties:
-                    result[key] = "test"
+                    prop_type = properties[key].get('type', 'string')
+                    if prop_type == 'integer' or prop_type == 'number':
+                        result[key] = 0
+                    elif prop_type == 'boolean':
+                        result[key] = False
+                    elif prop_type == 'array':
+                        result[key] = []
+                    elif prop_type == 'object':
+                        result[key] = {}
+                    else:
+                        result[key] = "test"
             return result
         return {}
 
@@ -52,7 +70,8 @@ class ToolInjectionTest:
         for i, key in enumerate(keys[:-1]):
             if isinstance(key, int):
                 while len(current) <= key:
-                    current.append({})
+                    next_key = keys[i+1]
+                    current.append({} if isinstance(next_key, str) else [])
                 current = current[key]
             else:
                 if key not in current:
@@ -62,7 +81,7 @@ class ToolInjectionTest:
         last_key = keys[-1]
         if isinstance(last_key, int):
             while len(current) <= last_key:
-                current.append("")
+                current.append(None)
             current[last_key] = value
         else:
             current[last_key] = value
