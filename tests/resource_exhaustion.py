@@ -2,6 +2,7 @@
 import time
 import sys
 import json
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 
 
@@ -52,7 +53,7 @@ class ResourceExhaustionTest:
                         'severity': 'MEDIUM',
                         'note': f'Accepted {size//1024//1024}MB payload without validation ({elapsed:.2f}s)'
                     })
-            except Exception as e:
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
                 if 'broken pipe' in str(e).lower() or 'connection' in str(e).lower():
                     findings.append({
                         'type': 'DOS_LARGE_PAYLOAD',
@@ -61,6 +62,7 @@ class ResourceExhaustionTest:
                         'note': f'Server crashed on {size//1024//1024}MB payload: {e}'
                     })
                     break
+                logging.debug(f"Giant payload test error: {e}")
         
         return findings
     
@@ -95,7 +97,7 @@ class ResourceExhaustionTest:
                         'severity': 'MEDIUM',
                         'note': 'Server exposed recursion error trace'
                     })
-            except Exception as e:
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
                 if 'connection' in str(e).lower():
                     findings.append({
                         'type': 'DOS_RECURSION_CRASH',
@@ -103,6 +105,8 @@ class ResourceExhaustionTest:
                         'severity': 'HIGH',
                         'note': f'Server crashed on depth-{depth} JSON'
                     })
+                else:
+                    logging.debug(f"Recursive nesting test error: {e}")
         finally:
             sys.setrecursionlimit(old_limit)
         
@@ -131,7 +135,7 @@ class ResourceExhaustionTest:
                             'note': f'100K element array took {elapsed:.2f}s'
                         })
                         break
-                except Exception as e:
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
                     if 'memory' in str(e).lower():
                         findings.append({
                             'type': 'ARRAY_BOMB_CRASH',
@@ -140,6 +144,7 @@ class ResourceExhaustionTest:
                             'note': str(e)[:100]
                         })
                         break
+                    logging.debug(f"Array bomb test error: {e}")
         return findings
     
     def _test_regex_dos(self, tool):
@@ -173,8 +178,8 @@ class ResourceExhaustionTest:
                                 'note': f'Regex processing took {elapsed:.2f}s'
                             })
                             break
-                    except Exception:
-                        pass
+                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                        logging.debug(f"ReDoS test error: {e}")
         return findings
     
     def _test_batch_bomb(self, tool):
@@ -198,13 +203,15 @@ class ResourceExhaustionTest:
                         'severity': 'MEDIUM',
                         'note': f'{batch_size} batch requests took {elapsed:.2f}s'
                     })
-        except Exception as e:
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
             if 'memory' in str(e).lower() or 'connection' in str(e).lower():
                 findings.append({
                     'type': 'BATCH_BOMB_CRASH',
                     'severity': 'HIGH',
                     'note': f'Server crashed on batch of {batch_size}'
                 })
+            else:
+                logging.debug(f"Batch bomb test error: {e}")
         
         return findings
     
@@ -217,7 +224,8 @@ class ResourceExhaustionTest:
                 params = {"name": tool['name'], "arguments": {}}
                 self.pentester.send("tools/call", params, timeout=5)
                 return True
-            except Exception:
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"Parallel flood make_request error: {e}")
                 return False
         
         try:
@@ -236,7 +244,7 @@ class ResourceExhaustionTest:
                     'severity': 'HIGH',
                     'note': f'Only {success_rate*100:.0f}% requests succeeded under load'
                 })
-        except Exception as e:
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
             findings.append({
                 'type': 'DOS_CONCURRENT_FLOOD',
                 'severity': 'CRITICAL',
@@ -249,7 +257,8 @@ class ResourceExhaustionTest:
                 params = {"name": tool['name'], "arguments": {}}
                 resp, _ = self.pentester.send("tools/call", params)
                 return time.time() - start, resp is not None
-            except Exception as e:
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"Parallel flood request error: {e}")
                 return None, str(e)
         
         try:
@@ -281,7 +290,7 @@ class ResourceExhaustionTest:
                         'severity': 'MEDIUM',
                         'note': f'Avg response: {avg_time:.2f}s vs baseline {baseline:.2f}s'
                     })
-        except Exception as e:
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
             findings.append({
                 'type': 'PARALLEL_FLOOD_CRASH',
                 'tool': tool['name'],
@@ -302,8 +311,8 @@ class ResourceExhaustionTest:
                 try:
                     params = {"name": tool['name'], "arguments": {}}
                     self.pentester.send("tools/call", params)
-                except Exception:
-                    pass
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logging.debug(f"Connection exhaustion test error: {e}")
             elapsed = time.time() - start
             
             # If server slowed down significantly (connection pool exhausted)
@@ -314,7 +323,7 @@ class ResourceExhaustionTest:
                     'severity': 'HIGH',
                     'note': f'50 requests took {elapsed:.2f}s (avg {elapsed/50:.2f}s each)'
                 })
-        except Exception as e:
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
             if 'connection' in str(e).lower() or 'refused' in str(e).lower():
                 findings.append({
                     'type': 'CONNECTION_EXHAUSTION',
@@ -322,5 +331,7 @@ class ResourceExhaustionTest:
                     'severity': 'CRITICAL',
                     'note': f'Connection pool exhausted: {str(e)[:100]}'
                 })
+            else:
+                logging.debug(f"Connection exhaustion test error: {e}")
         
         return findings

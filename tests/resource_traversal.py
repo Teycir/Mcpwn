@@ -1,5 +1,6 @@
 """Resource path traversal tests"""
 import urllib.parse
+import logging
 
 
 class ResourceTraversalTest:
@@ -30,7 +31,8 @@ class ResourceTraversalTest:
         try:
             resources_list, _ = self.pentester.send("resources/list", {})
             valid_uris = [r['uri'] for r in resources_list.get('resources', [])]
-        except Exception:
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+            logging.debug(f"Resource list error: {e}")
             valid_uris = ["file:///tmp/test"]
 
         # Get payloads: LLM-generated or static
@@ -63,8 +65,8 @@ class ResourceTraversalTest:
                         'evidence': str(resp.get('contents', ''))[:50]
                     })
                     break
-            except Exception:
-                pass
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"Resource read error: {e}")
         return findings
 
     def _test_tool_arguments(self):
@@ -72,7 +74,8 @@ class ResourceTraversalTest:
         try:
             tools_list, _ = self.pentester.send("tools/list", {})
             tools = tools_list.get('tools', [])
-        except Exception:
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+            logging.debug(f"Tools list error: {e}")
             return findings
 
         suspicious_args = ['path', 'file', 'filename', 'filepath', 'src', 'source', 'dir']
@@ -110,19 +113,23 @@ class ResourceTraversalTest:
                                     'payload': payload,
                                     'evidence': content[:50]
                                 })
-                        except Exception:
-                            pass
+                        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                            logging.debug(f"Tool call error for {tool['name']}.{arg_name}: {e}")
         return findings
 
     def _check_leak(self, content):
-        if not content:
+        try:
+            if not content:
+                return False
+            content_str = str(content)
+            # Require 2+ markers from same category for higher confidence
+            for category, markers in self.LEAK_MARKERS.items():
+                matches = sum(1 for m in markers if m in content_str)
+                if matches >= 2:
+                    return True
+            # Single high-confidence markers
+            high_confidence = ["root:x:0:0:root", "-----BEGIN RSA PRIVATE KEY"]
+            return any(marker in content_str for marker in high_confidence)
+        except (TypeError, AttributeError) as e:
+            logging.debug(f"Leak check error: {e}")
             return False
-        content_str = str(content)
-        # Require 2+ markers from same category for higher confidence
-        for category, markers in self.LEAK_MARKERS.items():
-            matches = sum(1 for m in markers if m in content_str)
-            if matches >= 2:
-                return True
-        # Single high-confidence markers
-        high_confidence = ["root:x:0:0:root", "-----BEGIN RSA PRIVATE KEY"]
-        return any(marker in content_str for marker in high_confidence)

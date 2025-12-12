@@ -1,6 +1,7 @@
 """Insecure deserialization tests for MCP tools"""
 import base64
 import time
+import logging
 
 
 class DeserializationTest:
@@ -68,8 +69,8 @@ class DeserializationTest:
                     'severity': 'CRITICAL',
                     'note': f'Execution delayed {duration:.2f}s (sleep payload)'
                 })
-        except Exception:
-            pass
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+            logging.debug(f"Pickle test error for {tool['name']}.{arg}: {e}")
         
         return findings
     
@@ -105,8 +106,8 @@ class DeserializationTest:
                         'severity': 'MEDIUM',
                         'note': 'YAML parsing detected'
                     })
-            except Exception:
-                pass
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"YAML test error for {tool['name']}.{arg}: {e}")
         return findings
     
     def _test_json_gadgets(self, tool, arg):
@@ -143,6 +144,6 @@ class DeserializationTest:
                         'severity': 'HIGH',
                         'note': 'Type hint processed'
                     })
-            except Exception:
-                pass
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"JSON gadget test error for {tool['name']}.{arg}: {e}")
         return findings

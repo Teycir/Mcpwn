@@ -1,6 +1,7 @@
 """JSON-RPC protocol fuzzing tests"""
 import json
 import time
+import logging
 
 
 class ProtocolFuzzingTest:
@@ -69,6 +70,6 @@ class ProtocolFuzzingTest:
         for sock in self.socket_pool:
             try:
                 sock.close()
-            except Exception:
-                pass
+            except (OSError, ValueError, TypeError, AttributeError) as e:
+                logging.debug(f"Socket close error: {e}")
         self.socket_pool.clear()

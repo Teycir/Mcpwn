@@ -2,6 +2,7 @@
 import threading
 import uuid
 import time
+import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
@@ -60,10 +61,16 @@ class SSRFTest:
                 self.server = HTTPServer(('0.0.0.0', port), CallbackHandler)
                 self.server_port = self.server.server_address[1]
                 break
-            except OSError:
+            except OSError as e:
+                logging.debug(f"Port {port} unavailable: {e}")
                 port = 8888 + attempt
         
+        if not self.server:
+            logging.error("Failed to start SSRF listener on any port")
+            return
+        
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread.daemon = True
         thread.start()
     
     def run(self, tool):
@@ -114,8 +121,8 @@ class SSRFTest:
                             'response_snippet': content[:500],
                             'severity': 'CRITICAL'
                         })
-                except Exception as e:
-                    print(f"[!] SSRF test error for {tool['name']}.{arg}: {e}")
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logging.debug(f"SSRF test error for {tool['name']}.{arg}: {e}")
         
         return findings
     

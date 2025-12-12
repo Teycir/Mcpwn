@@ -1,6 +1,7 @@
 """Authentication and authorization bypass tests for MCP servers"""
 from contextlib import contextmanager
 import copy
+import logging
 
 
 class AuthBypassTest:
@@ -71,8 +72,8 @@ class AuthBypassTest:
                         'severity': 'HIGH',
                         'note': 'Tool executed successfully without Authorization header'
                     })
-            except Exception:
-                pass
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"Auth test error for {tool['name']}: {e}")
         return findings
     
     def _test_token_replay(self, tool):
@@ -95,8 +96,8 @@ class AuthBypassTest:
                             'note': f'Accepted invalid token: {token[:30]}'
                         })
                         break
-                except Exception:
-                    pass
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logging.debug(f"Token replay test error: {e}")
         return findings
     
     def _test_jwt_manipulation(self, tool):
@@ -123,8 +124,8 @@ class AuthBypassTest:
                             'note': f'Accepted JWT with {attack_type}'
                         })
                         break
-                except Exception:
-                    pass
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logging.debug(f"JWT test error: {e}")
         return findings
     
     def _test_header_injection(self, tool):
@@ -145,8 +146,8 @@ class AuthBypassTest:
                             'payload': repr(token[:30])
                         })
                         break
-                except Exception:
-                    pass
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logging.debug(f"Header injection test error: {e}")
         return findings
     
     def _test_privilege_escalation(self, tool):
@@ -175,8 +176,8 @@ class AuthBypassTest:
                                 'note': f'Accessed resource with ID: {victim_id}'
                             })
                             break
-                    except Exception:
-                        pass
+                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                        logging.debug(f"Privilege escalation test error: {e}")
         return findings
     
     def _test_vertical_escalation(self, tool):
@@ -199,8 +200,8 @@ class AuthBypassTest:
                         'severity': 'CRITICAL',
                         'note': 'Admin tool accessible without elevated privileges'
                     })
-            except Exception:
-                pass
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"Vertical escalation test error: {e}")
         return findings
     
     def _test_role_tampering(self, tool):
@@ -230,6 +231,6 @@ class AuthBypassTest:
                                 'note': f'Server accepted and reflected {arg}={value}'
                             })
                             break
-                    except Exception:
-                        pass
+                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                        logging.debug(f"Role tampering test error: {e}")
         return findings

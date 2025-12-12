@@ -69,7 +69,7 @@ class SemanticDetector:
     def report(self):
         """Return all detected findings"""
         try:
-            return self.findings
-        except AttributeError:
-            logger.error("Findings list not initialized")
+            return self.findings if self.findings else []
+        except (AttributeError, TypeError) as e:
+            logger.error("Error retrieving findings: %s", e)
             return []

@@ -1,4 +1,7 @@
 """Output safety and client-side injection tests"""
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PromptInjectionTest:
@@ -30,7 +33,8 @@ class PromptInjectionTest:
                     if payload in str(resp):
                         findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': f'{typ}_INJECTION', 'severity': 'HIGH'})
                         break
-                except: pass
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logger.debug(f"Markdown injection test error: {e}")
         return findings
 
     def _test_delimiter_breakout(self, tool):
@@ -46,7 +50,8 @@ class PromptInjectionTest:
                     if delim in str(resp):
                         findings.append({'tool': tool['name'], 'arg': arg, 'payload': delim, 'risk': 'DELIMITER_BREAKOUT', 'severity': 'MEDIUM'})
                         break
-                except: pass
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logger.debug(f"Delimiter breakout test error: {e}")
         return findings
 
     def _test_reflection(self, tool):
@@ -61,5 +66,6 @@ class PromptInjectionTest:
                 if payload in str(resp):
                     findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': 'PROMPT_REFLECTION', 'severity': 'INFO'})
                     break
-            except: pass
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logger.debug(f"Reflection test error: {e}")
         return findings

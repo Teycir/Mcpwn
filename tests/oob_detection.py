@@ -2,6 +2,7 @@
 import threading
 import uuid
 import time
+import logging
 from socketserver import ThreadingUDPServer, DatagramRequestHandler
 
 
@@ -99,8 +100,8 @@ class OOBTest:
                             'dns_query': self.captured_queries[token]['query'],
                             'severity': 'CRITICAL'
                         })
-                except Exception:
-                    pass
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logging.debug(f"OOB DNS test error for {tool['name']}.{arg}: {e}")
         
         return findings
     

@@ -1,6 +1,7 @@
 """Tool argument injection tests"""
 import time
 import copy
+import logging
 from payloads import PAYLOAD_PRIORITY
 
 
@@ -159,22 +160,29 @@ class ToolInjectionTest:
 
                     try:
                         self.pentester.send("tools/call", params)
-                    except Exception:
+                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                        logging.debug(f"Tool injection send error: {e}")
                         continue
 
-                    new_findings = self._check_detections(tool['name'], arg_path, payload, category)
-                    if new_findings:
-                        findings.extend(new_findings)
-                        if config.get('quick'):
-                            return findings
+                    try:
+                        new_findings = self._check_detections(tool['name'], arg_path, payload, category)
+                        if new_findings:
+                            findings.extend(new_findings)
+                            if config.get('quick'):
+                                return findings
+                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                        logging.debug(f"Detection check error: {e}")
                     
                     # Wait for blind OOB callbacks
                     time.sleep(0.3)
-                    new_findings = self._check_detections(tool['name'], arg_path, payload, category)
-                    if new_findings:
-                        findings.extend(new_findings)
-                        if config.get('quick'):
-                            return findings
+                    try:
+                        new_findings = self._check_detections(tool['name'], arg_path, payload, category)
+                        if new_findings:
+                            findings.extend(new_findings)
+                            if config.get('quick'):
+                                return findings
+                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                        logging.debug(f"Detection check error: {e}")
 
         return findings
 
@@ -199,30 +207,40 @@ class ToolInjectionTest:
 
                 try:
                     self.pentester.send("tools/call", params)
-                except Exception:
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logging.debug(f"Quick scan send error: {e}")
                     continue
 
-                new_findings = self._check_detections(tool['name'], arg_path, payload, 'command_injection')
-                if new_findings:
-                    return new_findings
+                try:
+                    new_findings = self._check_detections(tool['name'], arg_path, payload, 'command_injection')
+                    if new_findings:
+                        return new_findings
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logging.debug(f"Detection check error: {e}")
                 
                 time.sleep(0.3)
-                new_findings = self._check_detections(tool['name'], arg_path, payload, 'command_injection')
-                if new_findings:
-                    return new_findings
+                try:
+                    new_findings = self._check_detections(tool['name'], arg_path, payload, 'command_injection')
+                    if new_findings:
+                        return new_findings
+                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                    logging.debug(f"Detection check error: {e}")
 
         return findings
 
     def _check_detections(self, tool_name, arg, payload, category):
         """Extract findings from detector"""
         results = []
-        if self.pentester.detector.findings:
-            results.append({
-                'tool': tool_name,
-                'arg': arg,
-                'payload': payload,
-                'category': category,
-                'detections': self.pentester.detector.report()
-            })
-            self.pentester.detector.findings = []
+        try:
+            if self.pentester.detector.findings:
+                results.append({
+                    'tool': tool_name,
+                    'arg': arg,
+                    'payload': payload,
+                    'category': category,
+                    'detections': self.pentester.detector.report()
+                })
+                self.pentester.detector.findings = []
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+            logging.debug(f"Detector access error: {e}")
         return results

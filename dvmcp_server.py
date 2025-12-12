@@ -28,7 +28,7 @@ def handle_request(request):
             }
         }
     
-    elif method == 'tools/list':
+    if method == 'tools/list':
         return {
             'jsonrpc': '2.0',
             'id': req_id,
@@ -60,7 +60,7 @@ def handle_request(request):
             }
         }
     
-    elif method == 'tools/call':
+    if method == 'tools/call':
         tool_name = params.get('name')
         args = params.get('arguments', {})
         
@@ -82,10 +82,14 @@ def handle_request(request):
                 }
         
         elif tool_name == 'read_file':
-            # VULNERABLE: Path traversal
+            # FIXED: Path traversal validation
             path = args.get('path', '')
             try:
-                with open(path, 'r') as f:
+                allowed_dir = os.path.abspath('/tmp')
+                resolved_path = os.path.abspath(path)
+                if not resolved_path.startswith(allowed_dir + os.sep) and resolved_path != allowed_dir:
+                    raise ValueError('Path traversal detected')
+                with open(resolved_path, 'r') as f:
                     content = f.read()
                 return {
                     'jsonrpc': '2.0',
@@ -99,7 +103,7 @@ def handle_request(request):
                     'error': {'code': -1, 'message': str(e)}
                 }
     
-    elif method == 'resources/list':
+    if method == 'resources/list':
         return {
             'jsonrpc': '2.0',
             'id': req_id,
@@ -120,11 +124,17 @@ def main():
             request = json.loads(line.strip())
             response = handle_request(request)
             send_response(response)
-        except Exception as e:
+        except json.JSONDecodeError as e:
             send_response({
                 'jsonrpc': '2.0',
                 'id': None,
                 'error': {'code': -32700, 'message': f'Parse error: {e}'}
+            })
+        except Exception as e:
+            send_response({
+                'jsonrpc': '2.0',
+                'id': None,
+                'error': {'code': -32603, 'message': f'Internal error: {e}'}
             })
 
 

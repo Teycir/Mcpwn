@@ -2,6 +2,7 @@
 import threading
 import random
 import uuid
+import logging
 
 
 class RaceConditionTest:
@@ -47,7 +48,8 @@ class RaceConditionTest:
             barrier.wait()
             try:
                 results[idx] = func_with_args()
-            except Exception as e:
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"Race condition test error: {e}")
                 results[idx] = {'error': str(e)}
 
         for i in range(count):
@@ -56,7 +58,7 @@ class RaceConditionTest:
             t.start()
 
         for t in threads:
-            t.join()
+            t.join(timeout=30)
         
         return results
     
@@ -83,8 +85,12 @@ class RaceConditionTest:
         payload = self._generate_payload(tool, {target_arg: collision_val})
         
         def send_request():
-            resp, _ = self.pentester.send("tools/call", payload)
-            return resp
+            try:
+                resp, _ = self.pentester.send("tools/call", payload)
+                return resp
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"Creation collision test error: {e}")
+                return {'error': str(e)}
 
         results = self._execute_race(send_request, count=5)
         
@@ -110,8 +116,12 @@ class RaceConditionTest:
         payload = self._generate_payload(tool)
         
         def send_request():
-            resp, _ = self.pentester.send("tools/call", payload)
-            return resp
+            try:
+                resp, _ = self.pentester.send("tools/call", payload)
+                return resp
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                logging.debug(f"Concurrency stability test error: {e}")
+                return {'error': str(e)}
 
         results = self._execute_race(send_request, count=10)
         
