@@ -7,6 +7,7 @@ class ProtocolFuzzingTest:
     """Fuzz JSON-RPC structure for parser vulnerabilities and zombie states"""
     def __init__(self, pentester):
         self.pentester = pentester
+        self.socket_pool = []
 
     def run(self):
         """Test protocol parser robustness"""
@@ -39,27 +40,35 @@ class ProtocolFuzzingTest:
     def _run_single_fuzz(self, packet):
         """Send malformed packet then verify server responsiveness via liveness probe"""
         try:
-            with self.pentester.lock:
-                if not self.pentester.proc or self.pentester.proc.poll() is not None:
-                    return False
-                
-                try:
-                    self.pentester.proc.stdin.write(packet.encode('utf-8') + b'\n')
-                    self.pentester.proc.stdin.flush()
-                except (BrokenPipeError, OSError):
-                    return False
+            if not self.pentester.proc or self.pentester.proc.poll() is not None:
+                return False
+            
+            try:
+                self.pentester.proc.stdin.write(packet.encode('utf-8') + b'\n')
+                self.pentester.proc.stdin.flush()
+            except (BrokenPipeError, OSError):
+                return False
 
-                time.sleep(0.2)
+            time.sleep(0.2)
 
-                if self.pentester.proc.poll() is not None:
-                    return False
+            if self.pentester.proc.poll() is not None:
+                return False
 
-                # Liveness probe: detect zombie state
-                try:
-                    self.pentester.send("ping", {}, timeout=2.0)
-                    return True
-                except Exception:
-                    return False
+            # Liveness probe: detect zombie state
+            try:
+                self.pentester.send("ping", {}, timeout=2.0)
+                return True
+            except Exception:
+                return False
 
         except Exception:
             return False
+    
+    def cleanup(self):
+        """Clean up socket pool"""
+        for sock in self.socket_pool:
+            try:
+                sock.close()
+            except Exception:
+                pass
+        self.socket_pool.clear()

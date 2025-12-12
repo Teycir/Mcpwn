@@ -1,6 +1,7 @@
 """Server-Side Request Forgery tests via MCP tools"""
 import threading
 import uuid
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
@@ -9,9 +10,9 @@ class SSRFTest:
     
     def __init__(self, pentester):
         self.pentester = pentester
-        self.captured_callbacks = {}
         self.server = None
-        self.server_port = None
+        self.server_port = 8888  # Add default port
+        self.captured_callbacks = {}
         
     SSRF_PAYLOADS = [
         # Localhost probing
@@ -32,26 +33,25 @@ class SSRFTest:
     ]
     
     def _start_persistent_listener(self):
-        """Start single HTTP listener for entire scan"""
-        test = self
+        """Start HTTP callback listener"""
+        parent = self
         
-        class Handler(BaseHTTPRequestHandler):
+        class CallbackHandler(BaseHTTPRequestHandler):
             def do_GET(self):
-                token = self.path.split('/')[-1]
-                test.captured_callbacks[token] = {
-                    'path': self.path,
-                    'headers': dict(self.headers),
-                    'client_ip': self.client_address[0]
-                }
+                if '/callback/' in self.path:
+                    token = self.path.split('/callback/')[-1].split('/')[0]
+                    parent.captured_callbacks[token] = {
+                        'path': self.path,
+                        'headers': dict(self.headers),
+                        'time': time.time()
+                    }
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(b"SSRF-CONFIRMED")
+                self.wfile.write(b'SSRF-CONFIRMED')
             
-            def log_message(self, *args):
-                pass
+            def log_message(self, *args): pass
         
-        self.server = HTTPServer(('127.0.0.1', 0), Handler)
-        self.server_port = self.server.server_address[1]
+        self.server = HTTPServer(('0.0.0.0', self.server_port), CallbackHandler)
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
     

@@ -25,7 +25,8 @@ class Reporter:
             'findings': self.findings,
             'summary': {
                 'total': len(self.findings),
-                'by_type': self._count_by_type()
+                'by_type': self._count_by_type(),
+                'by_severity': self.summary()
             }
         }
         with open(filepath, 'w') as f:
@@ -66,3 +67,9 @@ body {{ font-family: monospace; margin: 20px; }}
             ftype = f.get('type', 'UNKNOWN')
             counts[ftype] = counts.get(ftype, 0) + 1
         return counts
+    
+    def summary(self):
+        """Return severity breakdown"""
+        from collections import Counter
+        severities = Counter(f.get('severity', 'UNKNOWN') for f in self.findings)
+        return dict(severities)

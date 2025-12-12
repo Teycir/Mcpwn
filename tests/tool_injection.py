@@ -3,11 +3,17 @@ import time
 import copy
 from payloads import PAYLOADS, PAYLOAD_PRIORITY
 
+try:
+    from payloads import RCE_QUICK_PAYLOADS
+except ImportError:
+    RCE_QUICK_PAYLOADS = PAYLOADS.get('command_injection', [])[:5]
+
 
 class ToolInjectionTest:
     """Inject payloads into tool arguments"""
     def __init__(self, pentester):
         self.pentester = pentester
+        self.server_port = None
 
     def _flatten_schema(self, schema, prefix="", visited=None):
         """Recursively flatten nested schema to paths (objects + arrays)"""
@@ -96,7 +102,6 @@ class ToolInjectionTest:
 
         # Quick mode: use minimal payloads
         if config.get('quick'):
-            from payloads import RCE_QUICK_PAYLOADS
             return self._quick_scan(tool, RCE_QUICK_PAYLOADS)
 
         # RCE-only mode: skip non-RCE categories
@@ -108,6 +113,7 @@ class ToolInjectionTest:
             ]
 
         base_args = self._generate_dummy_args(schema)
+        seen_payloads = set()
 
         for arg_path, arg_type in self._flatten_schema(schema):
             if arg_type not in ['string', 'any']:
@@ -115,11 +121,15 @@ class ToolInjectionTest:
 
             for category in categories:
                 for payload in PAYLOADS[category]:
+                    if payload in seen_payloads:
+                        continue
+                    seen_payloads.add(payload)
+                    
                     args = self._inject_value(base_args, arg_path, payload)
                     params = {"name": tool['name'], "arguments": args}
 
                     try:
-                        _, elapsed = self.pentester.send("tools/call", params)
+                        self.pentester.send("tools/call", params)
                     except Exception:
                         continue
 
@@ -144,17 +154,22 @@ class ToolInjectionTest:
         findings = []
         schema = tool.get('inputSchema', {})
         base_args = self._generate_dummy_args(schema)
+        seen_payloads = set()
 
         for arg_path, arg_type in self._flatten_schema(schema):
             if arg_type not in ['string', 'any']:
                 continue
 
             for payload in payloads:
+                if payload in seen_payloads:
+                    continue
+                seen_payloads.add(payload)
+                
                 args = self._inject_value(base_args, arg_path, payload)
                 params = {"name": tool['name'], "arguments": args}
 
                 try:
-                    _, elapsed = self.pentester.send("tools/call", params)
+                    self.pentester.send("tools/call", params)
                 except Exception:
                     continue
 

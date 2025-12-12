@@ -1,7 +1,12 @@
 """Mcpwn - MCP Security Testing Framework"""
 import argparse
-import shlex
+import logging
 from core import MCPPentester
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(levelname)s] %(message)s'
+)
 
 
 def main():
@@ -32,8 +37,10 @@ def main():
     except SystemExit:
         return 1
 
+    logger = logging.getLogger('mcpwn')
+    
     if args.timeout <= 0:
-        print("[!] Error: timeout must be positive")
+        logger.error("Timeout must be positive")
         return 1
 
     try:
@@ -49,7 +56,7 @@ def main():
         })
         pentester.run()
     except Exception as e:
-        print(f"[!] Fatal error: {e}")
+        logger.critical("Fatal error: %s", e, exc_info=True)
         return 1
     return 0
 

@@ -84,7 +84,7 @@ class DeserializationTest:
             try:
                 params = self._generate_valid_payload(tool, {arg: payload})
                 start = time.time()
-                resp, _ = self.pentester.send("tools/call", params)
+                resp, raw = self.pentester.send("tools/call", params)
                 duration = time.time() - start
                 
                 if duration > 3.5:
@@ -121,7 +121,7 @@ class DeserializationTest:
             try:
                 params = self._generate_valid_payload(tool, {arg: payload})
                 start = time.time()
-                resp, _ = self.pentester.send("tools/call", params)
+                resp, raw = self.pentester.send("tools/call", params)
                 duration = time.time() - start
                 
                 if duration > 3.5:
