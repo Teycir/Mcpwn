@@ -11,7 +11,7 @@ class SubscriptionFloodTest:
         """Execute subscription flood and measure impact"""
         findings = []
         
-        baseline = self._measure_latency()
+        baseline = self._measure_latency() or 0.001
         
         start = time.time()
         try:
@@ -43,10 +43,11 @@ class SubscriptionFloodTest:
                 'detail': 'Server unresponsive after subscription flood',
                 'severity': 'HIGH'
             })
-        elif baseline and post_flood > (baseline * 10):
+        elif baseline > 0 and post_flood > (baseline * 10):
+            ratio = post_flood / baseline
             findings.append({
                 'type': 'DOS_DEGRADATION',
-                'detail': f'Latency increased {post_flood/baseline:.1f}x ({baseline:.3f}s → {post_flood:.3f}s)',
+                'detail': f'Latency increased {ratio:.1f}x ({baseline:.3f}s → {post_flood:.3f}s)',
                 'severity': 'MEDIUM'
             })
         

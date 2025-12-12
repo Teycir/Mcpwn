@@ -120,12 +120,7 @@ class ToolInjectionTest:
         findings = []
         schema = tool.get('inputSchema', {})
         config = self.pentester.config
-
-        # Quick mode: use minimal payloads
-        if config.get('quick'):
-            context = {'tool_name': tool['name'], 'target_type': 'command_injection', 'schema_hints': schema}
-            quick_payloads = self.pentester.get_payloads(context)
-            return self._quick_scan(tool, quick_payloads)
+        stop_on_first = config.get('quick', False)
 
         # RCE-only mode: skip non-RCE categories
         if config.get('rce_only'):
@@ -168,7 +163,7 @@ class ToolInjectionTest:
                         new_findings = self._check_detections(tool['name'], arg_path, payload, category)
                         if new_findings:
                             findings.extend(new_findings)
-                            if config.get('quick'):
+                            if stop_on_first:
                                 return findings
                     except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
                         logging.debug(f"Detection check error: {e}")
@@ -179,54 +174,14 @@ class ToolInjectionTest:
                         new_findings = self._check_detections(tool['name'], arg_path, payload, category)
                         if new_findings:
                             findings.extend(new_findings)
-                            if config.get('quick'):
+                            if stop_on_first:
                                 return findings
                     except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
                         logging.debug(f"Detection check error: {e}")
 
         return findings
 
-    def _quick_scan(self, tool, payloads):
-        """Fast RCE-only scan with minimal payloads"""
-        findings = []
-        schema = tool.get('inputSchema', {})
-        base_args = self._generate_dummy_args(schema)
-        seen_payloads = set()
 
-        for arg_path, arg_type in self._flatten_schema(schema):
-            if arg_type not in ['string', 'any']:
-                continue
-
-            for payload in payloads:
-                if payload in seen_payloads:
-                    continue
-                seen_payloads.add(payload)
-                
-                args = self._inject_value(base_args, arg_path, payload)
-                params = {"name": tool['name'], "arguments": args}
-
-                try:
-                    self.pentester.send("tools/call", params)
-                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                    logging.debug(f"Quick scan send error: {e}")
-                    continue
-
-                try:
-                    new_findings = self._check_detections(tool['name'], arg_path, payload, 'command_injection')
-                    if new_findings:
-                        return new_findings
-                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                    logging.debug(f"Detection check error: {e}")
-                
-                time.sleep(0.3)
-                try:
-                    new_findings = self._check_detections(tool['name'], arg_path, payload, 'command_injection')
-                    if new_findings:
-                        return new_findings
-                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                    logging.debug(f"Detection check error: {e}")
-
-        return findings
 
     def _check_detections(self, tool_name, arg, payload, category):
         """Extract findings from detector"""

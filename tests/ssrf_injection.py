@@ -84,6 +84,10 @@ class SSRFTest:
         if not self.server:
             self._start_persistent_listener()
         
+        if not self.server:
+            logging.error("Skipping SSRF tests: Could not start listener.")
+            return []
+        
         schema = tool.get('inputSchema', {})
         url_args = self._find_url_args(schema)
         
