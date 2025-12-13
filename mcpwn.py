@@ -33,10 +33,6 @@ def main():
                         help='Focus on RCE detection only (fast)')
     parser.add_argument('--quick', action='store_true',
                         help='Quick scan with minimal payloads')
-    parser.add_argument('--llm-generate', action='store_true',
-                        help='Enable LLM-guided payload generation')
-    parser.add_argument('--api-key', type=str,
-                        help='API key for LLM (or set ANTHROPIC_API_KEY/GEMINI_API_KEY env var)')
     parser.add_argument('server_cmd', nargs=argparse.REMAINDER,
                         help='MCP server command')
 
@@ -54,12 +50,6 @@ def main():
         return 1
 
     try:
-        import os
-        api_key = args.api_key or os.getenv('ANTHROPIC_API_KEY') or os.getenv('GEMINI_API_KEY') or os.getenv('OPENROUTER_API_KEY')
-        
-        if args.llm_generate and not api_key:
-            logger.warning("--llm-generate enabled but no API key provided. Set --api-key or ANTHROPIC_API_KEY/GEMINI_API_KEY/OPENROUTER_API_KEY env var")
-        
         timeout = 5 if args.quick else args.timeout
         
         pentester = MCPPentester(args.server_cmd, config={
@@ -71,9 +61,7 @@ def main():
             'output_html': args.output_html,
             'output_sarif': args.output_sarif,
             'rce_only': args.rce_only,
-            'quick': args.quick,
-            'generation_mode': args.llm_generate,
-            'api_key': api_key
+            'quick': args.quick
         })
         pentester.run()
     except Exception as e:

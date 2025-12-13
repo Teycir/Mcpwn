@@ -18,16 +18,6 @@ Semantic-focused security testing for Model Context Protocol servers.
 
 - Python 3.8+
 - Core framework uses stdlib only (no dependencies)
-- Optional: LLM packages for `--llm-generate` mode
-
-```bash
-# Optional: For LLM-guided payload generation
-pip install openai  # OpenRouter (free models)
-# OR
-pip install google-generativeai  # Google Gemini (free tier)
-# OR
-pip install anthropic  # Anthropic Claude (paid)
-```
 
 ## Features
 
@@ -63,22 +53,6 @@ python mcpwn.py --output-json report.json --output-html report.html npx ...
 
 # Parallel flooding
 python mcpwn.py --parallel npx ...
-
-# LLM-guided payload generation (Tier 3)
-# Option 1: OpenRouter (free models)
-export OPENROUTER_API_KEY=sk-or-v1-...
-python mcpwn.py --llm-generate npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# Option 2: Google Gemini (free tier)
-export GEMINI_API_KEY=AIzaSy...
-python mcpwn.py --llm-generate npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# Option 3: Anthropic Claude
-export ANTHROPIC_API_KEY=sk-ant-...
-python mcpwn.py --llm-generate npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# Or pass API key directly
-python mcpwn.py --llm-generate --api-key sk-or-v1-... npx ...
 
 # SARIF output for CI/CD (GitHub Security, GitLab)
 python mcpwn.py --output-sarif report.sarif npx ...
@@ -116,7 +90,6 @@ python mcpwn.py python3 test_data/dvmcp_server.py
 - OOB detection (DNS exfiltration)
 - Race condition testing
 - Resource exhaustion
-- LLM-guided payload generation (optional)
 
 **Planned (test files exist, not yet integrated):**
 - SSRF injection
@@ -184,8 +157,6 @@ JSON reports include:
 | `--rce-only` | Skip non-RCE tests | False |
 | `--timeout` | Request timeout in seconds (quick mode uses 5s) | 10 |
 | `--parallel` | Enable parallel flooding | False |
-| `--llm-generate` | Enable LLM-guided payloads | False |
-| `--api-key` | API key for LLM (or use OPENROUTER_API_KEY/GEMINI_API_KEY/ANTHROPIC_API_KEY env) | None |
 | `--output-json` | Export JSON report | None |
 | `--output-html` | Export HTML report | None |
 | `--output-sarif` | Export SARIF report (CI/CD) | None |

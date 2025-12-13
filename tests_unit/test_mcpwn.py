@@ -42,7 +42,6 @@ def test_imports_work():
     "core/pentester.py",
     "core/detector.py",
     "core/reporter.py",
-    "core/generator.py",
 ])
 def test_python_syntax(file):
     """Test Python files have valid syntax"""
