@@ -1,6 +1,6 @@
 """Report generation for findings"""
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 
 
@@ -13,7 +13,7 @@ class Reporter:
         """Add findings from a test"""
         for finding in findings:
             finding['test'] = test_name
-            finding['timestamp'] = datetime.utcnow().isoformat()
+            finding['timestamp'] = datetime.now(timezone.utc).isoformat()
             self.findings.append(finding)
 
     def to_json(self, filepath):
@@ -21,7 +21,7 @@ class Reporter:
         report = {
             'tool': 'Mcpwn',
             'version': '1.0',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'findings': self.findings,
             'summary': {
                 'total': len(self.findings),
