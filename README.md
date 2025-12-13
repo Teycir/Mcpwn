@@ -30,13 +30,6 @@ python mcpwn.py --output-json report.json <your-mcp-server>
 
 **Real Impact:** Mcpwn found RCE vulnerabilities in production MCP servers by testing tool argument injection patterns that manual code review missed.
 
-## Author
-
-**Teycir Ben Soltane**
-- Website: [teycirbensoltane.tn](https://teycirbensoltane.tn)
-- Email: teycir@pxdmail.net
-- GitHub: [@Teycir](https://github.com/Teycir)
-
 ## Prerequisites
 
 - Python 3.8+
