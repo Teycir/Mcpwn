@@ -46,10 +46,10 @@ pip install anthropic  # Anthropic Claude (paid)
 # Basic scan
 python mcpwn.py npx -y @modelcontextprotocol/server-filesystem /tmp
 
-# Quick RCE scan (fast, stops on first finding)
+# Quick scan (5s timeout, stops on first tool injection finding)
 python mcpwn.py --quick npx -y @modelcontextprotocol/server-filesystem /tmp
 
-# RCE-only mode (comprehensive RCE testing)
+# RCE-only mode (skips non-RCE tests)
 python mcpwn.py --rce-only npx -y @modelcontextprotocol/server-filesystem /tmp
 
 # Safe mode (skip destructive tests: protocol fuzzing, subscription flood)
@@ -105,27 +105,24 @@ python mcpwn.py python3 test_data/dvmcp_server.py
 
 ## Attack Surface
 
-**Tier 1 (Implemented)**
+**Currently Implemented:**
 - State desync (skip/double initialize)
 - Capability fuzzing (malformed initialization)
-- Tool argument injection (command injection, path traversal, nested schemas)
+- Tool argument injection (command injection, path traversal)
 - Resource path traversal
 - Subscription flooding (parallel, skipped in safe mode)
-- SSRF injection (callback listener)
-- Deserialization attacks (pickle, YAML, JSON gadgets)
-
-**Tier 2 (Implemented)**
 - Prompt injection (indirect LLM jailbreak)
 - Protocol fuzzing (malformed JSON-RPC, skipped in safe mode)
-- Statistical timing analysis
-- Schema pollution
-- Auth bypass
-
-**Tier 3 (Implemented)**
-- LLM-guided payload generation (context-aware synthesis)
 - OOB detection (DNS exfiltration)
 - Race condition testing
 - Resource exhaustion
+- LLM-guided payload generation (optional)
+
+**Planned (test files exist, not yet integrated):**
+- SSRF injection
+- Deserialization attacks
+- Schema pollution
+- Auth bypass
 
 ## Detection
 
@@ -148,20 +145,20 @@ Mcpwn/
 │   ├── generator.py      # LLM-guided payload generation
 │   └── reporter.py       # JSON/HTML reports with severity aggregation
 └── tests/
-    ├── state_desync.py
-    ├── capability_fuzzing.py  # Initialization fuzzing
-    ├── tool_injection.py      # Payload deduplication
-    ├── resource_traversal.py  # Multi-marker validation
-    ├── subscription_flood.py  # Safe mode aware
-    ├── prompt_injection.py
-    ├── protocol_fuzzing.py    # Connection pooling, safe mode aware
-    ├── ssrf_injection.py      # HTTP callback listener with cleanup
-    ├── deserialization.py     # Pickle/YAML/JSON gadgets
-    ├── schema_pollution.py
-    ├── auth_bypass.py
-    ├── oob_detection.py       # DNS exfiltration listener
-    ├── race_condition.py
-    └── resource_exhaustion.py
+    ├── state_desync.py        # Active
+    ├── capability_fuzzing.py  # Active
+    ├── tool_injection.py      # Active
+    ├── resource_traversal.py  # Active
+    ├── subscription_flood.py  # Active
+    ├── prompt_injection.py    # Active
+    ├── protocol_fuzzing.py    # Active
+    ├── oob_detection.py       # Active
+    ├── race_condition.py      # Active
+    ├── resource_exhaustion.py # Active
+    ├── ssrf_injection.py      # Planned
+    ├── deserialization.py     # Planned
+    ├── schema_pollution.py    # Planned
+    └── auth_bypass.py         # Planned
 ```
 
 ## Report Format
@@ -183,9 +180,9 @@ JSON reports include:
 | Flag | Description | Default |
 |------|-------------|----------|
 | `--safe-mode` | Skip destructive tests | False |
-| `--quick` | Stop on first RCE finding | False |
-| `--rce-only` | Only test command injection | False |
-| `--timeout` | Request timeout in seconds | 10 |
+| `--quick` | Fast scan (5s timeout, stops on first tool injection finding) | False |
+| `--rce-only` | Skip non-RCE tests | False |
+| `--timeout` | Request timeout in seconds (quick mode uses 5s) | 10 |
 | `--parallel` | Enable parallel flooding | False |
 | `--llm-generate` | Enable LLM-guided payloads | False |
 | `--api-key` | API key for LLM (or use OPENROUTER_API_KEY/GEMINI_API_KEY/ANTHROPIC_API_KEY env) | None |
