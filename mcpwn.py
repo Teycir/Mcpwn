@@ -18,7 +18,7 @@ def main():
                         help='Skip destructive tests')
     parser.add_argument('--tags', nargs='+',
                         help='Only run specific test tags')
-    parser.add_argument('--timeout', type=int, default=30,
+    parser.add_argument('--timeout', type=int, default=10,
                         help='Request timeout in seconds')
     parser.add_argument('--parallel', action='store_true',
                         help='Use parallel flooding')
@@ -59,10 +59,12 @@ def main():
         if args.llm_generate and not api_key:
             logger.warning("--llm-generate enabled but no API key provided. Set --api-key or ANTHROPIC_API_KEY/GEMINI_API_KEY/OPENROUTER_API_KEY env var")
         
+        timeout = 5 if args.quick else args.timeout
+        
         pentester = MCPPentester(args.server_cmd, config={
             'safe_mode': args.safe_mode,
             'tags': args.tags,
-            'timeout': args.timeout,
+            'timeout': timeout,
             'parallel': args.parallel,
             'output_json': args.output_json,
             'output_html': args.output_html,

@@ -7,13 +7,12 @@ class SubscriptionFloodTest:
     def __init__(self, pentester):
         self.pentester = pentester
 
-    def run(self, count=2000):
+    def run(self, count=2000, parallel=False):
         """Execute subscription flood and measure impact"""
         findings = []
         
         baseline = self._measure_latency() or 0.001
         
-        start = time.time()
         try:
             for i in range(count):
                 self.pentester.send("resources/subscribe",
