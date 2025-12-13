@@ -39,14 +39,14 @@ def main():
     parser.add_argument('server_cmd', nargs=argparse.REMAINDER,
                         help='MCP server command')
 
-    try:
-        args = parser.parse_args()
-    except (SystemExit, Exception) as e:
-        logger = logging.getLogger('mcpwn')
-        logger.error("Argument parsing failed: %s", e)
-        return 1
+    args = parser.parse_args()
 
     logger = logging.getLogger('mcpwn')
+    
+    if not args.server_cmd:
+        logger.error("Error: MCP server command required")
+        parser.print_help()
+        return 1
     
     if args.timeout <= 0:
         logger.error("Timeout must be positive")
@@ -82,4 +82,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
