@@ -46,6 +46,7 @@ Discovery → Attack Generation → Execution → Semantic Detection
 - **Structured Logging**: Comprehensive logging with severity levels
 - **Safe Mode**: Skip destructive tests (protocol fuzzing, subscription flood)
 - **Severity Aggregation**: Automatic categorization by CRITICAL/HIGH/MEDIUM/LOW
+- **CI/CD Integration**: SARIF output for GitHub Security, GitLab, and other platforms
 
 ## Usage
 
@@ -251,6 +252,23 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 MIT License - see LICENSE file for details
+
+## Limitations
+
+**What Mcpwn Detects:**
+- Runtime exploits (RCE, path traversal, injection)
+- Protocol-level vulnerabilities
+- Resource exhaustion and DoS
+- Pattern-based security issues
+
+**What Mcpwn Misses:**
+- Configuration vulnerabilities (exposed credentials, insecure settings)
+- Business logic flaws
+- Authorization bypass requiring context
+- Complex multi-step attack chains
+- Novel vulnerabilities without known patterns
+
+**Recommendation:** Use Mcpwn for automated baseline scanning and CI/CD integration, but complement with manual security review for comprehensive coverage. Automated tools find known patterns; human analysis finds logic flaws.
 
 ## Disclaimer
 
