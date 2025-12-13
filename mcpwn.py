@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='MCP Security Testing Framework'
     )
+    parser.add_argument('--version', action='version', version='Mcpwn 1.0')
     parser.add_argument('--safe-mode', action='store_true',
                         help='Skip destructive tests')
     parser.add_argument('--tags', nargs='+',
