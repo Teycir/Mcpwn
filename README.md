@@ -4,6 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-2025--12-orange.svg)](https://modelcontextprotocol.io)
 [![Security](https://img.shields.io/badge/security-testing-red.svg)](https://github.com/Teycir/Mcpwn)
+[![Tests](https://img.shields.io/badge/tests-45%20passing-brightgreen.svg)](tests_unit/)
 
 **Automated security scanner for Model Context Protocol servers that detects RCE, path traversal, prompt injection, and protocol vulnerabilities.**
 
@@ -313,7 +314,7 @@ Mcpwn is designed to work seamlessly with AI assistants for enhanced security an
 **AI-Assisted Workflow:**
 ```bash
 # 1. Run automated scan
-python mcpwn.py --output-json findings.json <server>
+python mcpwn.py --output-json findings.json npx -y @modelcontextprotocol/server-filesystem /tmp
 
 # 2. AI analyzes structured output
 # - Parses JSON findings
