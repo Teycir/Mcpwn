@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Mcpwn - MCP Security Testing Framework"""
 import argparse
 import logging
