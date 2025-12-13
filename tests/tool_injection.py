@@ -228,15 +228,14 @@ class ToolInjectionTest:
                     except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
                         logging.debug(f"Detection check error: {e}")
                     
-                    time.sleep(1.5)
-                    try:
-                        new_findings = self._check_detections(tool['name'], arg_path, payload, category)
-                        if new_findings:
-                            findings.extend(new_findings)
-                            if stop_on_first:
-                                return findings
-                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                        logging.debug(f"Detection check error: {e}")
+                    if not stop_on_first:
+                        time.sleep(0.1)
+                        try:
+                            new_findings = self._check_detections(tool['name'], arg_path, payload, category)
+                            if new_findings:
+                                findings.extend(new_findings)
+                        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+                            logging.debug(f"Detection check error: {e}")
 
         return findings
 
