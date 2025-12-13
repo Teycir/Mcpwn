@@ -16,7 +16,8 @@ MCP servers expose powerful capabilities to AI agents. **One vulnerable tool = f
 - ✅ Finds **path traversal** vulnerabilities in file operations  
 - ✅ Identifies **prompt injection** risks in LLM-facing tools
 - ✅ Tests **protocol fuzzing** and state desync attacks
-- ✅ Generates **structured reports** (JSON/SARIF) for CI/CD integration
+- ✅ Generates **structured reports** (JSON/SARIF) for AI analysis & CI/CD
+- ✅ **Stages findings for AI** - automated baseline → AI deep analysis
 - ✅ **Zero dependencies** - pure Python stdlib
 
 **Quick Start:**
