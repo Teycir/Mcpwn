@@ -1,12 +1,24 @@
 # Mcpwn - MCP Security Testing Framework
 
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-2024--11--05-orange.svg)](https://modelcontextprotocol.io)
+[![Security](https://img.shields.io/badge/security-testing-red.svg)](https://github.com/Teycir/Mcpwn)
+
 Semantic-focused security testing for Model Context Protocol servers.
+
+## Author
+
+**Teycir Ben Soltane**
+- Website: [teycirbensoltane.tn](https://teycirbensoltane.tn)
+- Email: teycir@pxdmail.net
+- GitHub: [@Teycir](https://github.com/Teycir)
 
 ## Prerequisites
 
 - Python 3.8+
 - No external dependencies (uses stdlib only)
-- Optional: API key for `--llm-generate` mode - Anthropic Claude or Google Gemini (see [LLM_GUIDE.md](LLM_GUIDE.md))
+- Optional: API key for `--llm-generate` mode - Anthropic Claude or Google Gemini
 
 ```bash
 pip install -r requirements.txt
@@ -50,7 +62,7 @@ python mcpwn.py --rce-only npx -y @modelcontextprotocol/server-filesystem /tmp
 # Safe mode (skip destructive tests: protocol fuzzing, subscription flood)
 python mcpwn.py --safe-mode npx -y @modelcontextprotocol/server-filesystem /tmp
 
-# Custom timeout (default: 30s)
+# Custom timeout (default: 10s)
 python mcpwn.py --timeout 60 npx -y @modelcontextprotocol/server-filesystem /tmp
 
 # Generate reports with severity breakdown
@@ -144,7 +156,7 @@ Mcpwn/
 │   └── reporter.py       # JSON/HTML reports with severity aggregation
 └── tests/
     ├── state_desync.py
-    ├── capability_fuzzing.py  # NEW: Initialization fuzzing
+    ├── capability_fuzzing.py  # Initialization fuzzing
     ├── tool_injection.py      # Payload deduplication
     ├── resource_traversal.py  # Multi-marker validation
     ├── subscription_flood.py  # Safe mode aware
@@ -180,7 +192,7 @@ JSON reports include:
 | `--safe-mode` | Skip destructive tests | False |
 | `--quick` | Stop on first RCE finding | False |
 | `--rce-only` | Only test command injection | False |
-| `--timeout` | Request timeout in seconds | 30 |
+| `--timeout` | Request timeout in seconds | 10 |
 | `--parallel` | Enable parallel flooding | False |
 | `--llm-generate` | Enable LLM-guided payloads | False |
 | `--api-key` | API key for LLM (or use OPENROUTER_API_KEY/GEMINI_API_KEY/ANTHROPIC_API_KEY env) | None |
@@ -231,3 +243,22 @@ python mcpwn.py python3 test_data/dvmcp_server.py
 Expected findings:
 - RCE via `execute_command` tool
 - Path traversal via `read_file` tool
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Disclaimer
+
+This tool is for security testing purposes only. Only test systems you have permission to test.
+
+## Contact
+
+- **Author**: Teycir Ben Soltane
+- **Website**: [teycirbensoltane.tn](https://teycirbensoltane.tn)
+- **Email**: teycir@pxdmail.net
+- **GitHub**: [@Teycir](https://github.com/Teycir)
