@@ -5,7 +5,30 @@
 [![MCP](https://img.shields.io/badge/MCP-2025--12-orange.svg)](https://modelcontextprotocol.io)
 [![Security](https://img.shields.io/badge/security-testing-red.svg)](https://github.com/Teycir/Mcpwn)
 
-Semantic-focused security testing for Model Context Protocol servers.
+**Automated security scanner for Model Context Protocol servers that detects RCE, path traversal, prompt injection, and protocol vulnerabilities.**
+
+## Why Mcpwn?
+
+MCP servers expose powerful capabilities to AI agents. **One vulnerable tool = full system compromise.**
+
+**What Mcpwn Does:**
+- ✅ Detects **RCE** via command injection in tool arguments
+- ✅ Finds **path traversal** vulnerabilities in file operations  
+- ✅ Identifies **prompt injection** risks in LLM-facing tools
+- ✅ Tests **protocol fuzzing** and state desync attacks
+- ✅ Generates **structured reports** (JSON/SARIF) for CI/CD integration
+- ✅ **Zero dependencies** - pure Python stdlib
+
+**Quick Start:**
+```bash
+# Scan any MCP server in 5 seconds
+python mcpwn.py --quick npx -y @modelcontextprotocol/server-filesystem /tmp
+
+# Get JSON report for AI analysis
+python mcpwn.py --output-json report.json <your-mcp-server>
+```
+
+**Real Impact:** Mcpwn found RCE vulnerabilities in production MCP servers by testing tool argument injection patterns that manual code review missed.
 
 ## Author
 
