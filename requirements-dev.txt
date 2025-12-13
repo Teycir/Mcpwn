@@ -1,0 +1,15 @@
+# Development dependencies for Mcpwn
+
+# Testing
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-timeout>=2.2.0
+
+# Code quality
+flake8>=7.0.0
+bandit>=1.7.0
+
+# Optional: LLM packages (for --llm-generate)
+# openai>=1.0.0
+# google-generativeai>=0.3.0
+# anthropic>=0.18.0

@@ -223,16 +223,84 @@ python mcpwn.py --safe-mode ...
 - Resource traversal now requires 2+ markers for detection
 - Adjust `LEAK_MARKERS` in `tests/resource_traversal.py` if needed
 
-## Testing Mcpwn
+## Testing
 
-Use the included vulnerable test server (`test_data/dvmcp_server.py`):
+### Running Unit Tests
+
 ```bash
-python mcpwn.py python3 test_data/dvmcp_server.py
+# Run all unit tests
+python3 -m pytest tests_unit/ -v
+
+# Quick test run
+python3 -m pytest tests_unit/ -q
+
+# Run specific test file
+python3 -m pytest tests_unit/test_detector.py -v
+```
+
+### Integration Testing
+
+Test against the included vulnerable server:
+```bash
+# Basic integration test
+python3 mcpwn.py python3 test_data/dvmcp_server.py
+
+# Quick validation (5s timeout)
+python3 mcpwn.py --quick --rce-only python3 test_data/dvmcp_server.py
 ```
 
 Expected findings:
 - RCE via `execute_command` tool
 - Path traversal via `read_file` tool
+
+### Coverage Analysis
+
+```bash
+# Install coverage tools
+pip install pytest-cov
+
+# Run with coverage report
+python3 -m pytest tests_unit/ --cov=. --cov-report=term-missing
+
+# Generate HTML coverage report
+python3 -m pytest tests_unit/ --cov=. --cov-report=html
+# Open htmlcov/index.html in browser
+```
+
+### Test Suite Overview
+
+**46 tests covering:**
+- **Core Components** (22 tests)
+  - Semantic detector (9 tests)
+  - Reporter (7 tests)
+  - Payloads (6 tests)
+- **Edge Cases** (10 tests)
+  - Malformed input handling
+  - Unicode and special characters
+  - Large data processing
+  - Concurrent access scenarios
+- **Integration** (14 tests)
+  - CLI argument validation
+  - End-to-end scanning
+  - Report generation
+
+**Coverage Requirements:**
+- Core modules: >80% coverage
+- Critical paths: 100% coverage
+- Edge cases: Comprehensive error handling
+
+### Development Testing
+
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Run linting
+flake8 . --exclude=.git,.mypy_cache,__pycache__
+
+# Run security checks
+bandit -r . -ll --exclude=.git,.mypy_cache,tests_unit
+```
 
 ## AI Integration
 

@@ -1,0 +1,18 @@
+[run]
+source = .
+omit = 
+    tests_unit/*
+    test_data/*
+    .mypy_cache/*
+    __pycache__/*
+    setup.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
