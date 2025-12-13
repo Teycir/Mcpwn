@@ -253,6 +253,35 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 MIT License - see LICENSE file for details
 
+## AI Integration
+
+Mcpwn is designed to work seamlessly with AI assistants for enhanced security analysis:
+
+**AI-Assisted Workflow:**
+```bash
+# 1. Run automated scan
+python mcpwn.py --output-json findings.json <server>
+
+# 2. AI analyzes structured output
+# - Parses JSON findings
+# - Identifies vulnerability patterns
+# - Prioritizes by severity
+
+# 3. AI performs deep analysis
+# - Validates findings in context
+# - Finds logic flaws Mcpwn missed
+# - Generates remediation guidance
+```
+
+**Benefits:**
+- **Structured Data**: JSON/SARIF output for AI parsing
+- **Evidence-Based**: Concrete exploits vs speculation
+- **Time Savings**: AI focuses on interpretation, not pattern matching
+- **Validation**: Confirm AI-suggested vulnerabilities with automated testing
+- **Training**: Mcpwn findings teach AI about MCP vulnerabilities
+
+**Best Practice:** Use Mcpwn for automated baseline → AI for deep contextual analysis → Comprehensive security coverage
+
 ## Limitations
 
 **What Mcpwn Detects:**
