@@ -353,6 +353,38 @@ python mcpwn.py --output-json findings.json npx -y @modelcontextprotocol/server-
 
 **Recommendation:** Use Mcpwn for automated baseline scanning and CI/CD integration, but complement with manual security review for comprehensive coverage. Automated tools find known patterns; human analysis finds logic flaws.
 
+## FAQ
+
+**Q: How long does a typical scan take?**  
+A: Quick mode (`--quick --rce-only`) takes ~5 seconds. Full scan takes 30-60 seconds depending on server complexity.
+
+**Q: Will this crash my MCP server?**  
+A: Use `--safe-mode` to skip destructive tests (protocol fuzzing, subscription flood). Tool injection and path traversal tests are non-destructive.
+
+**Q: Does this work with any MCP server?**  
+A: Yes, any server implementing the Model Context Protocol (2024-11-05 spec). Works with Python, TypeScript, Go implementations.
+
+**Q: How do I integrate this into CI/CD?**  
+A: Use `--output-sarif report.sarif` to generate SARIF format compatible with GitHub Security, GitLab, and other platforms.
+
+**Q: What's the difference between --quick and --rce-only?**  
+A: `--quick` reduces timeout to 5s and stops on first finding. `--rce-only` skips non-RCE tests (path traversal, prompt injection, etc). Combine both for fastest scan.
+
+**Q: Can I test my own MCP server?**  
+A: Yes! Point Mcpwn at your server command: `python mcpwn.py python3 my_server.py` or `python mcpwn.py node server.js`
+
+**Q: What if I get false positives?**  
+A: Check the detection patterns in the JSON report. Path traversal requires 2+ markers. Adjust `LEAK_MARKERS` in `tests/resource_traversal.py` if needed.
+
+**Q: Does this require root/admin privileges?**  
+A: No, runs with normal user privileges. Only needs permission to execute the MCP server command.
+
+**Q: How does semantic detection work?**  
+A: Instead of looking for crashes, Mcpwn analyzes response content for patterns like `uid=1000`, `root:x:0:0`, `-----BEGIN PRIVATE KEY`, timing deviations, etc.
+
+**Q: Can I use this with AI assistants?**  
+A: Yes! Generate JSON output (`--output-json findings.json`) and feed it to AI for deeper analysis. The structured format helps AI understand vulnerabilities in context.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
