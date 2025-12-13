@@ -59,9 +59,8 @@ htmlcov/
 Thumbs.db
 .directory
 
-# Reports and test data
+# Reports
 reports/
-test_data/
 /tmp/
 *.json.bak
 
