@@ -1,5 +1,4 @@
 """Unit tests for semantic detector"""
-import pytest
 from core.detector import SemanticDetector
 
 def test_detector_initialization():

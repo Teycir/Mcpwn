@@ -3,7 +3,6 @@
 import json
 import sys
 import subprocess
-import os
 
 def send_response(response):
     """Send JSON-RPC response"""
@@ -63,9 +62,10 @@ def handle_request(request):
         
         if tool_name == 'execute_command':
             # VULNERABLE: Direct command execution
+            # nosec B602 - Intentionally vulnerable test server
             cmd = args.get('command', '')
             try:
-                result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True, timeout=5)
+                result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True, timeout=5)  # nosec
             except subprocess.TimeoutExpired:
                 result = 'Command timeout'
             except Exception as e:

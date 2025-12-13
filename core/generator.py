@@ -185,11 +185,13 @@ class LLMPayloadGenerator:
 # Global instance
 _GENERATOR = None
 
+
 def initialize_generator(config: Dict) -> LLMPayloadGenerator:
     """Initialize global generator instance."""
     global _GENERATOR
     _GENERATOR = LLMPayloadGenerator(config)
     return _GENERATOR
+
 
 def get_generator() -> LLMPayloadGenerator:
     """Access global generator instance."""

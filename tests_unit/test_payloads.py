@@ -1,5 +1,5 @@
 """Unit tests for payloads module"""
-import pytest
+# flake8: noqa: S101 - assert statements are expected in tests
 from payloads import PAYLOADS, PAYLOAD_PRIORITY, INDICATORS
 
 def test_payload_structure():
