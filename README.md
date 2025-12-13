@@ -26,10 +26,24 @@ MCP servers expose powerful capabilities to AI agents. **One vulnerable tool = f
 python mcpwn.py --quick npx -y @modelcontextprotocol/server-filesystem /tmp
 
 # Get JSON report for AI analysis
-python mcpwn.py --output-json report.json <your-mcp-server>
+python mcpwn.py --output-json report.json npx -y @modelcontextprotocol/server-filesystem /tmp
 ```
 
 **Real Impact:** Mcpwn found RCE vulnerabilities in production MCP servers by testing tool argument injection patterns that manual code review missed.
+
+## Installation
+
+```bash
+# Clone repository
+git clone https://github.com/Teycir/Mcpwn.git
+cd Mcpwn
+
+# Make executable
+chmod +x mcpwn.py
+
+# Run directly (no dependencies needed)
+python3 mcpwn.py --help
+```
 
 ## Prerequisites
 
@@ -133,7 +147,7 @@ Mcpwn/
 │   ├── pentester.py      # Main orchestrator (thread-safe, timeout handling)
 │   ├── detector.py       # Semantic detection engine
 │   └── reporter.py       # JSON/HTML/SARIF reports with severity aggregation
-└── tests/
+├── tests/
     ├── state_desync.py        # Active
     ├── capability_fuzzing.py  # Active
     ├── tool_injection.py      # Active
@@ -148,6 +162,9 @@ Mcpwn/
     ├── deserialization.py     # Planned
     ├── schema_pollution.py    # Planned
     └── auth_bypass.py         # Planned
+├── tests_unit/           # 45 pytest unit tests
+└── test_data/
+    └── dvmcp_server.py   # Deliberately vulnerable MCP server for testing
 ```
 
 ## Report Format
@@ -347,9 +364,9 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 This tool is for security testing purposes only. Only test systems you have permission to test.
 
-## Contact
+## Author
 
-- **Author**: Teycir Ben Soltane
+**Teycir Ben Soltane**
 - **Website**: [teycirbensoltane.tn](https://teycirbensoltane.tn)
 - **Email**: teycir@pxdmail.net
 - **GitHub**: [@Teycir](https://github.com/Teycir)
