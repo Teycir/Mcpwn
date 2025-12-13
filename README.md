@@ -115,8 +115,7 @@ Mcpwn/
 ├── core/
 │   ├── pentester.py      # Main orchestrator (thread-safe, timeout handling)
 │   ├── detector.py       # Semantic detection engine
-│   ├── generator.py      # LLM-guided payload generation
-│   └── reporter.py       # JSON/HTML reports with severity aggregation
+│   └── reporter.py       # JSON/HTML/SARIF reports with severity aggregation
 └── tests/
     ├── state_desync.py        # Active
     ├── capability_fuzzing.py  # Active
@@ -240,11 +239,11 @@ python3 -m pytest tests_unit/ --cov=. --cov-report=html
 
 ### Test Suite Overview
 
-**46 tests covering:**
-- **Core Components** (22 tests)
+**45 tests covering:**
+- **Core Components** (21 tests)
   - Semantic detector (9 tests)
   - Reporter (7 tests)
-  - Payloads (6 tests)
+  - Payloads (5 tests)
 - **Edge Cases** (10 tests)
   - Malformed input handling
   - Unicode and special characters
