@@ -17,24 +17,16 @@ Semantic-focused security testing for Model Context Protocol servers.
 ## Prerequisites
 
 - Python 3.8+
-- No external dependencies (uses stdlib only)
-- Optional: API key for `--llm-generate` mode - Anthropic Claude or Google Gemini
+- Core framework uses stdlib only (no dependencies)
+- Optional: LLM packages for `--llm-generate` mode
 
 ```bash
-pip install -r requirements.txt
-
-# For LLM-guided generation (choose one):
+# Optional: For LLM-guided payload generation
 pip install openai  # OpenRouter (free models)
 # OR
 pip install google-generativeai  # Google Gemini (free tier)
 # OR
 pip install anthropic  # Anthropic Claude (paid)
-```
-
-## Architecture
-
-```
-Discovery → Attack Generation → Execution → Semantic Detection
 ```
 
 ## Features
@@ -236,7 +228,7 @@ python mcpwn.py --safe-mode ...
 
 ## Testing Mcpwn
 
-Use the included vulnerable server:
+Use the included vulnerable test server (`test_data/dvmcp_server.py`):
 ```bash
 python mcpwn.py python3 test_data/dvmcp_server.py
 ```
@@ -244,14 +236,6 @@ python mcpwn.py python3 test_data/dvmcp_server.py
 Expected findings:
 - RCE via `execute_command` tool
 - Path traversal via `read_file` tool
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-MIT License - see LICENSE file for details
 
 ## AI Integration
 
@@ -298,6 +282,14 @@ python mcpwn.py --output-json findings.json <server>
 - Novel vulnerabilities without known patterns
 
 **Recommendation:** Use Mcpwn for automated baseline scanning and CI/CD integration, but complement with manual security review for comprehensive coverage. Automated tools find known patterns; human analysis finds logic flaws.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - see LICENSE file for details
 
 ## Disclaimer
 
