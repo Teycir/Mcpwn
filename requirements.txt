@@ -1,0 +1,11 @@
+# Mcpwn - MCP Security Testing Framework
+# Python 3.8+ required
+
+# No external dependencies for core functionality
+# All tests use Python standard library only
+
+# Optional: LLM-guided payload generation
+# Uncomment if using --llm-generate:
+# openai>=1.0.0  # For OpenRouter (free models)
+# google-generativeai>=0.3.0  # For Gemini (Google)
+# anthropic>=0.18.0  # For Claude (Anthropic)

@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Quick MCP security test runner for multiple servers"""
+import subprocess
+import json
+import sys
+import time
+
+SERVERS = [
+    {
+        "name": "time",
+        "cmd": "uvx mcp-server-time",
+        "timeout": 20
+    },
+    {
+        "name": "memory",
+        "cmd": "npx -y @modelcontextprotocol/server-memory",
+        "timeout": 25
+    },
+    {
+        "name": "filesystem",
+        "cmd": "npx -y @modelcontextprotocol/server-filesystem /tmp",
+        "timeout": 25
+    },
+    {
+        "name": "sequentialthinking",
+        "cmd": "npx -y @modelcontextprotocol/server-sequential-thinking",
+        "timeout": 25
+    },
+]
+
+def test_server(server_name, cmd, timeout):
+    """Test a single MCP server"""
+    print(f"\n{'='*60}")
+    print(f"Testing: {server_name}")
+    print(f"Command: {cmd}")
+    print(f"{'='*60}")
+    
+    report_file = f"/tmp/{server_name}_report.json"
+    mcpwn_cmd = f"python3 mcpwn.py --quick --output-json {report_file} {cmd}"
+    
+    try:
+        result = subprocess.run(
+            mcpwn_cmd,
+            shell=True,
+            cwd="/home/teycir/Repos/Mcpwn",
+            timeout=timeout,
+            capture_output=True,
+            text=True
+        )
+        
+        print(result.stdout)
+        if result.stderr:
+            print("STDERR:", result.stderr[:500])
+        
+        # Try to read report
+        try:
+            with open(report_file) as f:
+                report = json.load(f)
+                print(f"\n✓ Report generated: {report_file}")
+                if 'summary' in report:
+                    print(f"  Total findings: {report['summary'].get('total', 0)}")
+                    if 'by_severity' in report['summary']:
+                        print(f"  By severity: {report['summary']['by_severity']}")
+        except (FileNotFoundError, json.JSONDecodeError):
+            print(f"✗ No report generated")
+            
+    except subprocess.TimeoutExpired:
+        print(f"✗ Test timed out after {timeout}s")
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+
+if __name__ == "__main__":
+    print("Mcpwn Quick Test Suite")
+    print(f"Testing {len(SERVERS)} MCP servers...\n")
+    
+    for server in SERVERS:
+        test_server(server["name"], server["cmd"], server["timeout"])
+    
+    print(f"\n{'='*60}")
+    print("Test suite complete")
+    print(f"{'='*60}")
