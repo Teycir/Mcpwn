@@ -2,8 +2,8 @@
 """Quick MCP security test runner for multiple servers"""
 import subprocess
 import json
-import sys
-import time
+import os
+import tempfile
 
 SERVERS = [
     {
@@ -35,14 +35,16 @@ def test_server(server_name, cmd, timeout):
     print(f"Command: {cmd}")
     print(f"{'='*60}")
     
-    report_file = f"/tmp/{server_name}_report.json"
-    mcpwn_cmd = f"python3 mcpwn.py --quick --output-json {report_file} {cmd}"
+    report_file = os.path.join(tempfile.gettempdir(), f"{server_name}_report.json")
+    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    mcpwn_script = os.path.join(script_dir, "mcpwn.py")
+    cmd_args = ["python3", mcpwn_script, "--quick", "--output-json", report_file] + cmd.split()
     
     try:
+        # nosec B603 - cmd is from hardcoded SERVERS list, not user input
         result = subprocess.run(
-            mcpwn_cmd,
-            shell=True,
-            cwd="/home/teycir/Repos/Mcpwn",
+            cmd_args,
+            cwd=script_dir,
             timeout=timeout,
             capture_output=True,
             text=True
@@ -62,7 +64,7 @@ def test_server(server_name, cmd, timeout):
                     if 'by_severity' in report['summary']:
                         print(f"  By severity: {report['summary']['by_severity']}")
         except (FileNotFoundError, json.JSONDecodeError):
-            print(f"✗ No report generated")
+            print("✗ No report generated")
             
     except subprocess.TimeoutExpired:
         print(f"✗ Test timed out after {timeout}s")
