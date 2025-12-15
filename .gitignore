@@ -147,3 +147,4 @@ docs
 .pytest_cache/
 *.pyc
 __pycache__/
+.history

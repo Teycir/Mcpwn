@@ -1,5 +1,74 @@
 # Changelog
 
+## [1.2.0] - 2024-12-15
+
+### Added
+- **Side-Channel Detection**: New test module for timing, size, and behavioral anomalies
+  - Timing side-channel detection with variance analysis
+  - Size-based detection for directory enumeration
+  - Behavioral pattern matching (network/shell/filesystem activity)
+  - 50% performance gain via merged network calls
+  - Located in `tests/side_channel.py`
+
+- **Paranoid Security Profile**: Production-ready configuration
+  - 1000ms timing threshold (serverless-friendly)
+  - 1MB response size threshold
+  - Enhanced behavioral patterns (9 shell, 6 network, 5 filesystem indicators)
+  - Located in `profiles/paranoid.json`
+
+- **Allowlist Configuration**: Runtime security enforcement
+  - Tool-specific capability restrictions
+  - Pattern-based response filtering
+  - Size and time limits per tool
+  - Domain/IP allowlisting for network tools
+  - Example in `test_data/allowlist.example.json`
+
+- **Runtime Enforcer**: Thread-safe allowlist enforcement
+  - Cached JSON loading with threading.Lock
+  - SecurityError exception class
+  - Path validation
+  - Located in `test_data/enforcer.py`
+
+- **CI/CD Integration Guide**: Production deployment patterns
+  - GitHub Actions workflow examples
+  - GitLab CI configuration
+  - Pre-deployment security checks
+  - Prometheus monitoring integration
+  - Located in `CI_CD_INTEGRATION.md`
+
+- **Unit Tests**: Comprehensive test coverage for side-channel detection
+  - 9 test cases covering all detection methods
+  - Timing variance validation
+  - False positive prevention tests
+  - Exception handling verification
+  - Located in `tests_unit/test_side_channel.py`
+
+### Changed
+- **Timing Detection**: Added variance check to reduce false positives
+  - Only flags if `stdev < avg * 0.5` (consistent slowness)
+  - Filters out network jitter and cold starts
+
+- **Exception Handling**: Improved error logging
+  - Specific exceptions logged at DEBUG level
+  - Unexpected exceptions logged at WARNING level
+  - Better debugging for production deployments
+
+- **Behavioral Patterns**: More specific indicators
+  - Network: `af_inet`, `connect(`, `tcp://`, `udp://` (removed generic "connection", "socket")
+  - Shell: Added `subprocess.run`, `subprocess.popen`, `os.system`, `pwsh`
+  - Filesystem: Added `/etc/shadow`, `~/.ssh/`, more specific paths
+
+### Performance
+- Merged size and behavioral tests into single network call (50% reduction in I/O)
+- Single string conversion per response (reduced memory usage)
+- Pre-lowercased indicators cached in `__init__` (faster pattern matching)
+- Cached tool name lookups (reduced attribute access)
+
+### Security
+- Thread-safe caching in AllowlistEnforcer prevents race conditions
+- Path validation prevents directory traversal in config loading
+- Proper exception definitions prevent undefined errors
+
 ## [1.1.0] - 2024
 
 ### Added

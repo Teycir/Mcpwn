@@ -1,0 +1,19 @@
+{
+  "name": "paranoid",
+  "description": "Strict security profile for production MCP deployments",
+  "timing_thresholds": {
+    "slow_query_ms": 1000,
+    "suspicious_delay_ms": 2000
+  },
+  "size_thresholds": {
+    "large_response_bytes": 1048576,
+    "directory_walk_items": 1000
+  },
+  "behavioral_patterns": {
+    "network_indicators": ["af_inet", "connect(", "http://", "https://", "tcp://", "udp://"],
+    "shell_indicators": ["/bin/sh", "/bin/bash", "cmd.exe", "powershell", "pwsh", "subprocess.call", "subprocess.run", "subprocess.popen", "os.system"],
+    "filesystem_root_indicators": ["/etc/passwd", "/etc/shadow", "/root/", "~/.ssh/", "c:\\windows\\system32"]
+  },
+  "allowlist_enforcement": true,
+  "fail_on_violation": true
+}

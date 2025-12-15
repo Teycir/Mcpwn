@@ -1,0 +1,26 @@
+{
+  "tools": {
+    "read_file": {
+      "allowed_capabilities": ["filesystem"],
+      "forbidden_patterns": ["network", "shell", "root_access"],
+      "max_response_size": 10485760,
+      "max_execution_time_ms": 1000
+    },
+    "execute_command": {
+      "allowed": false,
+      "reason": "Command execution disabled in production"
+    },
+    "fetch_url": {
+      "allowed_capabilities": ["network"],
+      "forbidden_patterns": ["filesystem", "shell"],
+      "allowed_domains": ["api.example.com", "cdn.example.com"],
+      "forbidden_ips": ["127.0.0.1", "169.254.169.254", "10.0.0.0/8"]
+    }
+  },
+  "global_rules": {
+    "max_response_size": 52428800,
+    "max_execution_time_ms": 5000,
+    "forbidden_paths": ["/etc/", "/root/", "/sys/", "/proc/"],
+    "require_authentication": true
+  }
+}
