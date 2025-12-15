@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.2.0] - 2024-12-15
+## [1.2.0] - 2025-12-15
 
 ### Added
 - **Side-Channel Detection**: New test module for timing, size, and behavioral anomalies
@@ -69,7 +69,7 @@
 - Path validation prevents directory traversal in config loading
 - Proper exception definitions prevent undefined errors
 
-## [1.1.0] - 2024
+## [1.1.0] - 2025
 
 ### Added
 - **API Key Support**: LLM-guided generation now accepts API key via CLI or environment
