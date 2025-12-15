@@ -154,24 +154,30 @@ Mcpwn/
 │   ├── pentester.py      # Main orchestrator (thread-safe, timeout handling)
 │   ├── detector.py       # Semantic detection engine
 │   └── reporter.py       # JSON/HTML/SARIF reports with severity aggregation
+├── profiles/
+│   └── paranoid.json     # Production security profile
 ├── tests/
-    ├── state_desync.py        # Active
-    ├── capability_fuzzing.py  # Active
-    ├── tool_injection.py      # Active
-    ├── resource_traversal.py  # Active
-    ├── subscription_flood.py  # Active
-    ├── prompt_injection.py    # Active
-    ├── protocol_fuzzing.py    # Active
-    ├── oob_detection.py       # Active
-    ├── race_condition.py      # Active
-    ├── resource_exhaustion.py # Active
-    ├── ssrf_injection.py      # Planned
-    ├── deserialization.py     # Planned
-    ├── schema_pollution.py    # Planned
-    └── auth_bypass.py         # Planned
-├── tests_unit/           # 45 pytest unit tests
-└── test_data/
-    └── dvmcp_server.py   # Deliberately vulnerable MCP server for testing
+│   ├── state_desync.py        # Active
+│   ├── capability_fuzzing.py  # Active
+│   ├── tool_injection.py      # Active
+│   ├── resource_traversal.py  # Active
+│   ├── subscription_flood.py  # Active
+│   ├── prompt_injection.py    # Active
+│   ├── protocol_fuzzing.py    # Active
+│   ├── oob_detection.py       # Active
+│   ├── race_condition.py      # Active
+│   ├── resource_exhaustion.py # Active
+│   ├── side_channel.py        # Active
+│   ├── ssrf_injection.py      # Planned
+│   ├── deserialization.py     # Planned
+│   ├── schema_pollution.py    # Planned
+│   └── auth_bypass.py         # Planned
+├── tests_unit/           # 54 pytest unit tests
+├── test_data/
+│   ├── dvmcp_server.py        # Deliberately vulnerable MCP server
+│   ├── allowlist.example.json # Allowlist configuration example
+│   └── enforcer.py            # Thread-safe runtime enforcer
+└── CI_CD_INTEGRATION.md  # Deployment guide
 ```
 
 ## Report Format
@@ -281,14 +287,38 @@ python3 -m pytest tests_unit/ --cov=. --cov-report=html
 
 ### Test Suite Overview
 
-**45 tests covering:**
+**54 tests covering:**
 - **Core Components** (21 tests)
   - Semantic detector (9 tests)
   - Reporter (7 tests)
   - Payloads (5 tests)
+- **Side-Channel Detection** (9 tests)
+  - Timing variance validation
+  - Size anomaly detection
+  - Behavioral pattern matching
+  - False positive prevention
 - **Edge Cases** (10 tests)
   - Malformed input handling
   - Unicode and special characters
+  - Large data processing
+  - Concurrent access scenarios
+- **Integration** (14 tests)
+  - CLI argument validation
+  - End-to-end scanning
+  - Report generation
+
+**Coverage Requirements:**
+- Core modules: >80% coverage
+- Critical paths: 100% coverage
+- Edge cases: Comprehensive error handling
+
+### Development Testing
+
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Run lintharacters
   - Large data processing
   - Concurrent access scenarios
 - **Integration** (14 tests)
