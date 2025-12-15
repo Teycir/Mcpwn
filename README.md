@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-2025--12-orange.svg)](https://modelcontextprotocol.io)
 [![Security](https://img.shields.io/badge/security-testing-red.svg)](https://github.com/Teycir/Mcpwn)
-[![Tests](https://img.shields.io/badge/tests-45%20passing-brightgreen.svg)](tests_unit/)
+[![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen.svg)](tests_unit/)
 
 **Automated security scanner for Model Context Protocol servers that detects RCE, path traversal, prompt injection, and protocol vulnerabilities.**
 
@@ -54,6 +54,8 @@ python3 mcpwn.py --help
 ## Features
 
 - **Semantic Detection**: Pattern-based exploit detection (RCE, file read, timing attacks)
+- **Side-Channel Detection**: Timing, size, and behavioral anomaly detection
+- **Paranoid Profile**: Production security profile with enhanced thresholds
 - **Thread-Safe**: Concurrent operations with proper locking
 - **Configurable Timeouts**: Per-request timeout control with deadline tracking
 - **Payload Deduplication**: Efficient testing without redundant payloads
@@ -89,6 +91,9 @@ python mcpwn.py --parallel npx ...
 # SARIF output for CI/CD (GitHub Security, GitLab)
 python mcpwn.py --output-sarif report.sarif npx ...
 
+# Paranoid mode (production security profile with side-channel detection)
+python mcpwn.py --profile profiles/paranoid.json npx ...
+
 # Test against vulnerable server
 python mcpwn.py python3 test_data/dvmcp_server.py
 ```
@@ -122,6 +127,7 @@ python mcpwn.py python3 test_data/dvmcp_server.py
 - OOB detection (DNS exfiltration)
 - Race condition testing
 - Resource exhaustion
+- Side-channel detection (timing, size, behavioral patterns)
 
 **Planned (test files exist, not yet integrated):**
 - SSRF injection
@@ -189,6 +195,7 @@ JSON reports include:
 | `--safe-mode` | Skip destructive tests | False |
 | `--quick` | Fast scan (5s timeout, stops on first tool injection finding) | False |
 | `--rce-only` | Skip non-RCE tests | False |
+| `--profile` | Security profile (e.g., profiles/paranoid.json) | None |
 | `--timeout` | Request timeout in seconds (quick mode uses 5s) | 10 |
 | `--parallel` | Enable parallel flooding | False |
 | `--output-json` | Export JSON report | None |
