@@ -4,6 +4,27 @@ import copy
 import logging
 from payloads import PAYLOAD_PRIORITY
 
+# Worst severity each detector finding type implies; TIMING is statistical and
+# routinely fires on jitter, so on its own it is weak evidence.
+SEVERITY_BY_DETECTION = {
+    'RCE': 'CRITICAL',
+    'OOB_DNS': 'CRITICAL',
+    'FILE_READ': 'HIGH',
+    'TIMING': 'LOW',
+}
+SEVERITY_RANK = {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1, 'INFO': 0}
+
+
+def classify_detections(detections):
+    """Return (type, severity) for the strongest detection; MEDIUM if unknown"""
+    types = [d['type'] for d in detections
+             if isinstance(d, dict) and d.get('type')]
+    if not types:
+        return 'INJECTION_ANOMALY', 'MEDIUM'
+    rank = lambda t: SEVERITY_RANK[SEVERITY_BY_DETECTION.get(t, 'MEDIUM')]
+    strongest = max(types, key=rank)
+    return strongest, SEVERITY_BY_DETECTION.get(strongest, 'MEDIUM')
+
 
 class ToolInjectionTest:
     """Inject payloads into tool arguments"""
@@ -210,7 +231,9 @@ class ToolInjectionTest:
                                 'tool': tool['name'],
                                 'arg': arg_path,
                                 'payload': payload,
+                                'type': 'BLIND_RCE_TIMING',
                                 'category': 'BLIND_RCE_TIMING',
+                                'severity': 'HIGH',
                                 'detections': [f'Timing delay: {duration:.2f}s']
                             })
                             if stop_on_first:
@@ -244,12 +267,16 @@ class ToolInjectionTest:
         results = []
         try:
             if self.pentester.detector.findings:
+                detections = self.pentester.detector.report()
+                ftype, severity = classify_detections(detections)
                 results.append({
                     'tool': tool_name,
                     'arg': arg,
                     'payload': payload,
+                    'type': ftype,
                     'category': category,
-                    'detections': self.pentester.detector.report()
+                    'severity': severity,
+                    'detections': detections
                 })
                 self.pentester.detector.findings = []
         except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:

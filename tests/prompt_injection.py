@@ -31,7 +31,7 @@ class PromptInjectionTest:
                 try:
                     resp, _ = self.pentester.send("tools/call", params)
                     if payload in str(resp):
-                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': f'{typ}_INJECTION', 'severity': 'HIGH'})
+                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': f'{typ}_INJECTION', 'type': f'{typ}_INJECTION', 'severity': 'HIGH'})
                         break
                 except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
                     logger.debug(f"Markdown injection test error: {e}")
@@ -48,7 +48,7 @@ class PromptInjectionTest:
                 try:
                     resp, _ = self.pentester.send("tools/call", params)
                     if delim in str(resp):
-                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': delim, 'risk': 'DELIMITER_BREAKOUT', 'severity': 'MEDIUM'})
+                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': delim, 'risk': 'DELIMITER_BREAKOUT', 'type': 'DELIMITER_BREAKOUT', 'severity': 'MEDIUM'})
                         break
                 except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
                     logger.debug(f"Delimiter breakout test error: {e}")
@@ -72,15 +72,15 @@ class PromptInjectionTest:
                     
                     # Check for reflection
                     if payload in str(resp):
-                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': risk_type, 'severity': 'INFO'})
+                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': risk_type, 'type': risk_type, 'severity': 'INFO'})
                         break
                     
                     # Check for potential execution (response contains injected keywords)
                     if risk_type == "CONTEXT_CONFUSION" and "pwned" in resp_str:
-                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': 'POSSIBLE_CONTEXT_CONFUSION', 'severity': 'MEDIUM'})
+                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': 'POSSIBLE_CONTEXT_CONFUSION', 'type': 'POSSIBLE_CONTEXT_CONFUSION', 'severity': 'MEDIUM'})
                         break
                     elif risk_type == "CONTEXT_INJECTION" and "injected" in resp_str:
-                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': 'POSSIBLE_CONTEXT_INJECTION', 'severity': 'MEDIUM'})
+                        findings.append({'tool': tool['name'], 'arg': arg, 'payload': payload, 'risk': 'POSSIBLE_CONTEXT_INJECTION', 'type': 'POSSIBLE_CONTEXT_INJECTION', 'severity': 'MEDIUM'})
                         break
                         
                 except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
