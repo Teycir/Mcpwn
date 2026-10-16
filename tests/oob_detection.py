@@ -9,10 +9,16 @@ from socketserver import ThreadingUDPServer, DatagramRequestHandler
 class OOBTest:
     """Detect OOB data exfiltration via DNS queries"""
     
+    # Payloads dial DNS at 127.0.0.1 on the default resolver port (53),
+    # so that is where the listener must live. Override with oob_dns_port.
+    DEFAULT_DNS_PORT = 53
+
     def __init__(self, pentester):
         self.pentester = pentester
         self.dns_server = None
-        self.dns_port = 5353
+        self.dns_port = (pentester.config.get('oob_dns_port')
+                         or self.DEFAULT_DNS_PORT)
+        self._listener_failed = False
         self.captured_queries = {}
         
     DNS_PAYLOADS = [
@@ -64,9 +70,19 @@ class OOBTest:
                 except (IndexError, UnicodeDecodeError):
                     return None
         
-        self.dns_server = ThreadingUDPServer(('0.0.0.0', self.dns_port), DNSHandler)
-        thread = threading.Thread(target=self.dns_server.serve_forever, daemon=True)
+        try:
+            self.dns_server = ThreadingUDPServer(('127.0.0.1', self.dns_port),
+                                                 DNSHandler)
+        except OSError as e:
+            self._listener_failed = True
+            logging.warning(
+                "OOB DNS listener unavailable on 127.0.0.1:%s (%s); "
+                "skipping OOB exfiltration tests", self.dns_port, e)
+            return False
+        thread = threading.Thread(target=self.dns_server.serve_forever,
+                                  daemon=True)
         thread.start()
+        return True
     
     def run(self, tool):
         """Test tool for OOB DNS exfiltration"""
@@ -74,7 +90,8 @@ class OOBTest:
         findings = []
         
         if not self.dns_server:
-            self._start_dns_listener()
+            if self._listener_failed or not self._start_dns_listener():
+                return findings
         
         schema = tool.get('inputSchema', {})
         test_args = self._find_injectable_args(schema)

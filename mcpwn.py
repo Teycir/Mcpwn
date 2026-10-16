@@ -34,6 +34,8 @@ def main():
                         help='Focus on RCE detection only (fast)')
     parser.add_argument('--quick', action='store_true',
                         help='Quick scan with minimal payloads')
+    parser.add_argument('--oob-port', type=int, default=None,
+                        help='UDP port for OOB DNS listener (default: 53)')
     parser.add_argument('server_cmd', nargs=argparse.REMAINDER,
                         help='MCP server command')
 
@@ -62,7 +64,8 @@ def main():
             'output_html': args.output_html,
             'output_sarif': args.output_sarif,
             'rce_only': args.rce_only,
-            'quick': args.quick
+            'quick': args.quick,
+            'oob_dns_port': args.oob_port
         })
         pentester.run()
     except Exception as e:
