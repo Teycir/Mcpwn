@@ -223,6 +223,7 @@ JSON reports include:
 | `--profile` | Security profile (e.g., profiles/paranoid.json) | None |
 | `--timeout` | Request timeout in seconds (quick mode uses 5s) | 10 |
 | `--parallel` | Enable parallel flooding | False |
+| `--profile` | Security profile JSON (e.g. `profiles/paranoid.json`) | None |
 | `--output-json` | Export JSON report | None |
 | `--output-html` | Export HTML report | None |
 | `--output-sarif` | Export SARIF report (CI/CD) | None |
@@ -237,10 +238,11 @@ JSON reports include:
 
 ## Troubleshooting
 
-**Port conflicts (SSRF/OOB tests)**
+**Port conflicts (OOB DNS test)**
+The OOB test binds a UDP DNS listener on port 5353. If it is already in use (often mDNS/avahi), the OOB tier logs the bind failure and is skipped.
 ```bash
-# Check if port 8888 is in use
-lsof -i :8888
+# Check if UDP port 5353 is in use
+lsof -i :5353
 # Kill conflicting process or wait for cleanup
 ```
 

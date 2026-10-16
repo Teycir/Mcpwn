@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Mcpwn - MCP Security Testing Framework"""
 import argparse
+import json
 import logging
 import sys
 from core import MCPPentester
@@ -9,6 +10,18 @@ logging.basicConfig(
     level=logging.INFO,
     format='[%(levelname)s] %(message)s'
 )
+
+
+def load_profile(path):
+    """Load a security profile JSON, raising ValueError on bad input"""
+    try:
+        with open(path, encoding='utf-8') as fh:
+            profile = json.load(fh)
+    except (OSError, json.JSONDecodeError) as e:
+        raise ValueError(f"cannot load profile {path}: {e}") from e
+    if not isinstance(profile, dict):
+        raise ValueError(f"profile must be a JSON object: {path}")
+    return profile
 
 
 def main():
@@ -24,6 +37,8 @@ def main():
                         help='Request timeout in seconds')
     parser.add_argument('--parallel', action='store_true',
                         help='Use parallel flooding')
+    parser.add_argument('--profile', type=str,
+                        help='Security profile JSON (e.g. profiles/paranoid.json)')
     parser.add_argument('--output-json', type=str,
                         help='Export findings as JSON')
     parser.add_argument('--output-html', type=str,
@@ -54,8 +69,10 @@ def main():
 
     try:
         timeout = 5 if args.quick else args.timeout
-        
+        profile = load_profile(args.profile) if args.profile else None
+
         pentester = MCPPentester(args.server_cmd, config={
+            'profile': profile,
             'safe_mode': args.safe_mode,
             'tags': args.tags,
             'timeout': timeout,
