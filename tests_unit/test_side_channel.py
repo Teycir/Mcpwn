@@ -37,8 +37,9 @@ class TestSideChannelDetection(unittest.TestCase):
         
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0]['type'], 'TIMING_SIDE_CHANNEL')
-        self.assertEqual(findings[0]['severity'], 'MEDIUM')
-        self.assertIn('1.200s', findings[0]['avg_time'])
+        self.assertEqual(findings[0]['severity'], 'LOW')
+        self.assertLessEqual(findings[0]['confidence'], 30)
+        self.assertIn('1.200s', findings[0]['evidence'][0])
     
     def test_timing_no_false_positive_with_jitter(self):
         """Test that high variance (network jitter) doesn't trigger"""
@@ -78,7 +79,7 @@ class TestSideChannelDetection(unittest.TestCase):
         
         size_findings = [f for f in findings if f['type'] == 'SIZE_SIDE_CHANNEL']
         self.assertEqual(len(size_findings), 1)
-        self.assertEqual(size_findings[0]['severity'], 'MEDIUM')
+        self.assertEqual(size_findings[0]['severity'], 'LOW')
         self.assertGreater(size_findings[0]['response_size'], 1048576)
     
     def test_shell_activity_detection(self):
@@ -99,7 +100,7 @@ class TestSideChannelDetection(unittest.TestCase):
         
         shell_findings = [f for f in findings if f['type'] == 'SHELL_ACTIVITY_DETECTED']
         self.assertEqual(len(shell_findings), 1)
-        self.assertEqual(shell_findings[0]['severity'], 'CRITICAL')
+        self.assertEqual(shell_findings[0]['severity'], 'HIGH')
     
     def test_network_activity_detection(self):
         """Test network activity pattern detection"""
@@ -119,7 +120,7 @@ class TestSideChannelDetection(unittest.TestCase):
         
         net_findings = [f for f in findings if f['type'] == 'NETWORK_ACTIVITY_DETECTED']
         self.assertEqual(len(net_findings), 1)
-        self.assertEqual(net_findings[0]['severity'], 'HIGH')
+        self.assertEqual(net_findings[0]['severity'], 'MEDIUM')
     
     def test_filesystem_access_detection(self):
         """Test sensitive filesystem access detection"""
@@ -140,7 +141,7 @@ class TestSideChannelDetection(unittest.TestCase):
         fs_findings = [f for f in findings if f['type'] == 'ROOT_FILESYSTEM_ACCESS']
         self.assertEqual(len(fs_findings), 1)
         self.assertEqual(fs_findings[0]['severity'], 'HIGH')
-    
+
     def test_no_false_positives_on_normal_response(self):
         """Test that normal responses don't trigger alerts"""
         tool = {

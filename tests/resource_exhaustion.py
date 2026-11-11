@@ -1,290 +1,380 @@
-"""Resource exhaustion and DoS vulnerability tests for MCP servers"""
-import time
-import sys
+"""Resource exhaustion and DoS tests.
+
+Every probe is gated behind ``--allow-destructive`` and bounded by the scan's
+payload/request limits.  A crash finding requires the process to be dead or to
+fail two consecutive liveness probes; a mere slow response is a low-confidence
+observation.
+"""
+from __future__ import annotations
+
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed, wait
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
+
+from core.evidence import make_finding
+from core.protocol import (
+    ProtocolError,
+    RequestTimeout,
+    SafetyLimitExceeded,
+    TransportClosed,
+    TransportError,
+    content_summary,
+    error_code,
+    result_text,
+)
+
+logger = logging.getLogger("mcpwn.exhaustion")
+
+BATCH_SIZE = 200
 
 
 class ResourceExhaustionTest:
-    """Test for resource exhaustion vulnerabilities"""
-    
+    """Test resource exhaustion vulnerabilities."""
+
     def __init__(self, pentester):
         self.pentester = pentester
-    
+
     def run(self, tool, quick_mode=False):
-        """Test resource exhaustion attacks"""
+        try:
+            self.pentester.policy.require_destructive(
+                "resource exhaustion tests")
+        except SafetyLimitExceeded as exc:
+            logger.info("%s", exc)
+            return []
         findings = []
-        findings.extend(self._test_recursive_nesting(tool))
-        findings.extend(self._test_regex_dos(tool))
-        
+        for probe in (self._test_recursive_nesting,
+                      self._test_regex_dos):
+            findings.extend(self._safe(probe, tool))
         if not quick_mode:
-            findings.extend(self._test_giant_payload(tool))
-            findings.extend(self._test_array_bomb(tool))
-            findings.extend(self._test_batch_bomb(tool))
-            findings.extend(self._test_parallel_flood(tool))
-        
+            for probe in (self._test_giant_payload,
+                          self._test_array_bomb,
+                          self._test_batch_bomb,
+                          self._test_parallel_flood):
+                findings.extend(self._safe(probe, tool))
+        self._recover()
         return findings
-    
+
+    def _safe(self, probe, tool):
+        try:
+            return probe(tool) or []
+        except SafetyLimitExceeded as exc:
+            logger.info("%s stopped: %s", probe.__name__, exc)
+            return []
+        except (TransportError, ProtocolError, RequestTimeout,
+                OSError, ValueError, TypeError, KeyError) as exc:
+            logger.debug("%s failed: %s", probe.__name__, exc)
+            return []
+
+    @staticmethod
+    def _string_arg(tool):
+        for name, spec in (tool.get("inputSchema", {}) or {}).get(
+                "properties", {}).items():
+            if isinstance(spec, dict) and spec.get("type") == "string":
+                return name
+        return None
+
+    @staticmethod
+    def _typed_arg(tool, types):
+        for name, spec in (tool.get("inputSchema", {}) or {}).get(
+                "properties", {}).items():
+            if isinstance(spec, dict) and spec.get("type") in types:
+                return name, spec.get("type")
+        return None, None
+
     def _test_giant_payload(self, tool):
-        """Test giant payload attacks (10MB+ arguments)"""
+        arg = self._string_arg(tool)
+        if not arg:
+            return []
+        maximum = self.pentester.policy.limits.max_payload_bytes
+        sizes = sorted({min(256 * 1024, maximum), maximum})
         findings = []
-        schema = tool.get('inputSchema', {})
-        target_arg = next((k for k, v in schema.get('properties', {}).items() 
-                          if v.get('type') == 'string'), None)
-        
-        if not target_arg:
-            return findings
-        
-        sizes = [1 * 1024 * 1024, 10 * 1024 * 1024]
         for size in sizes:
+            payload = "A" * size
             try:
-                giant = 'A' * size
-                start = time.time()
-                params = {"name": tool['name'], "arguments": {target_arg: giant}}
-                resp, _ = self.pentester.send("tools/call", params, timeout=10)
-                elapsed = time.time() - start
-                
-                resp_str = str(resp).lower()
-                if 'error' not in resp_str and 'limit' not in resp_str:
-                    findings.append({
-                        'type': 'UNBOUNDED_PAYLOAD_SIZE',
-                        'tool': tool['name'],
-                        'severity': 'MEDIUM',
-                        'note': f'Accepted {size//1024//1024}MB payload without validation ({elapsed:.2f}s)'
-                    })
-            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                if 'broken pipe' in str(e).lower() or 'connection' in str(e).lower():
-                    findings.append({
-                        'type': 'DOS_LARGE_PAYLOAD',
-                        'tool': tool['name'],
-                        'severity': 'CRITICAL',
-                        'note': f'Server crashed on {size//1024//1024}MB payload: {e}'
-                    })
+                response, elapsed = self.pentester.send(
+                    "tools/call",
+                    {"name": tool.get("name"), "arguments": {arg: payload}},
+                    skip_analysis=True, timeout=10,
+                )
+            except TransportClosed as exc:
+                if not self.pentester.is_alive():
+                    findings.append(make_finding(
+                        "DOS_LARGE_PAYLOAD",
+                        tool=tool.get("name"),
+                        arg=arg,
+                        severity="HIGH",
+                        confidence=70,
+                        verified=True,
+                        evidence=[
+                            "{} byte argument".format(size), str(exc)],
+                        note="server exited after an oversized argument",
+                    ))
                     break
-                logging.debug(f"Giant payload test error: {e}")
-        
+                continue
+            except (TransportError, ProtocolError, RequestTimeout,
+                    SafetyLimitExceeded):
+                continue
+            text = result_text(response).lower()
+            if error_code(response) is None and "limit" not in text:
+                findings.append(make_finding(
+                    "UNBOUNDED_PAYLOAD_SIZE",
+                    tool=tool.get("name"),
+                    arg=arg,
+                    severity="MEDIUM",
+                    confidence=55,
+                    evidence=[
+                        "accepted {} byte argument in {:.2f}s".format(
+                            size, elapsed),
+                        content_summary(response, 150),
+                    ],
+                    note="no size limit observed",
+                ))
+                break
         return findings
-    
+
     def _test_recursive_nesting(self, tool):
-        """Test recursive JSON nesting - SAFE: won't crash tester"""
-        findings = []
-        schema = tool.get('inputSchema', {})
-        target_arg = next((k for k, v in schema.get('properties', {}).items() 
-                          if v.get('type') in ['object', 'array']), None)
-        
-        if not target_arg:
-            return findings
-        
-        old_limit = sys.getrecursionlimit()
-        sys.setrecursionlimit(5000)
-        
+        arg, arg_type = self._typed_arg(tool, ("object", "array"))
+        if not arg:
+            return []
+        depth = 300
+        nested: Any = {}
+        current = nested
+        for _ in range(depth):
+            current["a"] = {}
+            current = current["a"]
+        if arg_type == "array":
+            nested = [nested]
         try:
-            depth = 2000
-            nested = {}
-            curr = nested
-            for _ in range(depth):
-                curr['a'] = {}
-                curr = curr['a']
-            
-            params = {"name": tool['name'], "arguments": {target_arg: nested}}
-            try:
-                resp, _ = self.pentester.send("tools/call", params)
-                if resp and 'recursion' in str(resp).lower():
-                    findings.append({
-                        'type': 'STACK_OVERFLOW_EXPOSED',
-                        'tool': tool['name'],
-                        'severity': 'MEDIUM',
-                        'note': 'Server exposed recursion error trace'
-                    })
-            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                if 'connection' in str(e).lower():
-                    findings.append({
-                        'type': 'DOS_RECURSION_CRASH',
-                        'tool': tool['name'],
-                        'severity': 'HIGH',
-                        'note': f'Server crashed on depth-{depth} JSON'
-                    })
-                else:
-                    logging.debug(f"Recursive nesting test error: {e}")
-        finally:
-            sys.setrecursionlimit(old_limit)
-        
-        return findings
-    
+            response, _ = self.pentester.send(
+                "tools/call",
+                {"name": tool.get("name"), "arguments": {arg: nested}},
+                skip_analysis=True,
+            )
+        except TransportClosed as exc:
+            if not self.pentester.is_alive():
+                return [make_finding(
+                    "DOS_RECURSION_CRASH",
+                    tool=tool.get("name"),
+                    arg=arg,
+                    severity="HIGH",
+                    confidence=60,
+                    verified=True,
+                    evidence=["depth {}".format(depth), str(exc)],
+                    note="server exited on deeply nested JSON",
+                )]
+            return []
+        except (TransportError, ProtocolError, RequestTimeout,
+                SafetyLimitExceeded):
+            return []
+        if "recursion" in result_text(response).lower():
+            return [make_finding(
+                "STACK_OVERFLOW_EXPOSED",
+                tool=tool.get("name"),
+                arg=arg,
+                severity="MEDIUM",
+                confidence=45,
+                evidence=[content_summary(response, 200)],
+                note="recursion error details exposed",
+            )]
+        return []
+
     def _test_array_bomb(self, tool):
-        """Test billion laughs / array bomb style attacks"""
-        findings = []
-        schema = tool.get('inputSchema', {})
-        
-        for arg, spec in schema.get('properties', {}).items():
-            if spec.get('type') == 'array':
-                try:
-                    wide_array = ['x'] * 100000
-                    start = time.time()
-                    params = {"name": tool['name'], "arguments": {arg: wide_array}}
-                    resp, _ = self.pentester.send("tools/call", params)
-                    elapsed = time.time() - start
-                    
-                    if elapsed > 5:
-                        findings.append({
-                            'type': 'ARRAY_BOMB_SUSCEPTIBLE',
-                            'tool': tool['name'],
-                            'arg': arg,
-                            'severity': 'HIGH',
-                            'note': f'100K element array took {elapsed:.2f}s'
-                        })
-                        break
-                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                    if 'memory' in str(e).lower():
-                        findings.append({
-                            'type': 'ARRAY_BOMB_CRASH',
-                            'tool': tool['name'],
-                            'severity': 'CRITICAL',
-                            'note': str(e)[:100]
-                        })
-                        break
-                    logging.debug(f"Array bomb test error: {e}")
-        return findings
-    
+        arg, _ = self._typed_arg(tool, ("array",))
+        if not arg:
+            return []
+        wide_array = ["x"] * 20000
+        try:
+            start = time.perf_counter()
+            response, _ = self.pentester.send(
+                "tools/call",
+                {"name": tool.get("name"), "arguments": {arg: wide_array}},
+                skip_analysis=True,
+            )
+            elapsed = time.perf_counter() - start
+        except TransportClosed as exc:
+            if not self.pentester.is_alive():
+                return [make_finding(
+                    "ARRAY_BOMB_CRASH",
+                    tool=tool.get("name"),
+                    arg=arg,
+                    severity="HIGH",
+                    confidence=50,
+                    verified=True,
+                    evidence=[str(exc)],
+                    note="server exited on a 20k element array",
+                )]
+            return []
+        except (TransportError, ProtocolError, RequestTimeout,
+                SafetyLimitExceeded):
+            return []
+        if elapsed > 5:
+            return [make_finding(
+                "ARRAY_BOMB_SUSCEPTIBLE",
+                tool=tool.get("name"),
+                arg=arg,
+                severity="MEDIUM",
+                confidence=40,
+                evidence=[
+                    "20k element array took {:.2f}s".format(elapsed),
+                ],
+                note="possible unbounded array processing",
+            )]
+        return []
+
     def _test_regex_dos(self, tool):
-        """Test for ReDoS vulnerabilities"""
-        findings = []
-        schema = tool.get('inputSchema', {})
-        redos_payloads = [
-            'a' * 30 + '!',
-            'a' * 30 + 'X',
-            '0' * 30 + 'x',
-            '<' + 'a' * 30,
-            'aaaaaaaaaaaaaaaaaaaaaaaaaaaa@' * 3,
+        arg = self._string_arg(tool)
+        if not arg:
+            return []
+        payloads = [
+            "a" * 30 + "!",
+            "a" * 30 + "X",
+            "0" * 30 + "x",
+            "<" + "a" * 30,
+            "a" * 25 + "@" * 3,
         ]
-        
-        for arg, spec in schema.get('properties', {}).items():
-            if spec.get('type') == 'string':
-                for payload in redos_payloads:
-                    try:
-                        start = time.time()
-                        params = {"name": tool['name'], "arguments": {arg: payload}}
-                        self.pentester.send("tools/call", params)
-                        elapsed = time.time() - start
-                        
-                        if elapsed > 3:
-                            findings.append({
-                                'type': 'REGEX_DOS',
-                                'tool': tool['name'],
-                                'arg': arg,
-                                'severity': 'HIGH',
-                                'payload': payload[:30] + '...',
-                                'note': f'Regex processing took {elapsed:.2f}s'
-                            })
-                            break
-                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                        logging.debug(f"ReDoS test error: {e}")
-        return findings
-    
-    def _test_batch_bomb(self, tool):
-        """JSON-RPC batch bomb: massive array of requests"""
-        findings = []
-        batch_size = 2000
-        
-        batch = [{"jsonrpc": "2.0", "method": "tools/list", "id": i} 
-                 for i in range(batch_size)]
-        
-        try:
-            start = time.time()
-            # Send raw batch if supported, otherwise skip
-            if hasattr(self.pentester.client, 'send_raw'):
-                self.pentester.client.send_raw(json.dumps(batch))
-                elapsed = time.time() - start
-                
-                if elapsed > 5.0:
-                    findings.append({
-                        'type': 'BATCH_PROCESSING_LAG',
-                        'severity': 'MEDIUM',
-                        'note': f'{batch_size} batch requests took {elapsed:.2f}s'
-                    })
-        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-            if 'memory' in str(e).lower() or 'connection' in str(e).lower():
-                findings.append({
-                    'type': 'BATCH_BOMB_CRASH',
-                    'severity': 'HIGH',
-                    'note': f'Server crashed on batch of {batch_size}'
-                })
-            else:
-                logging.debug(f"Batch bomb test error: {e}")
-        
-        return findings
-    
-    def _test_parallel_flood(self, tool):
-        """ACTUAL concurrent flood - holds connections simultaneously"""
-        findings = []
-        
-        def make_request():
+        for payload in payloads:
             try:
-                params = {"name": tool['name'], "arguments": {}}
-                self.pentester.send("tools/call", params, timeout=5)
+                start = time.perf_counter()
+                self.pentester.send(
+                    "tools/call",
+                    {"name": tool.get("name"), "arguments": {arg: payload}},
+                    skip_analysis=True,
+                )
+                elapsed = time.perf_counter() - start
+            except (TransportError, ProtocolError, RequestTimeout,
+                    SafetyLimitExceeded):
+                continue
+            if elapsed > 3:
+                return [make_finding(
+                    "REGEX_DOS",
+                    tool=tool.get("name"),
+                    arg=arg,
+                    payload=payload[:30],
+                    severity="MEDIUM",
+                    confidence=35,
+                    evidence=["probe took {:.2f}s".format(elapsed)],
+                    note="single slow probe; confirm with a control input",
+                )]
+        return []
+
+    def _test_batch_bomb(self, tool):
+        batch = [
+            {"jsonrpc": "2.0", "method": "tools/list", "id": index}
+            for index in range(BATCH_SIZE)
+        ]
+        start = time.perf_counter()
+        try:
+            self.pentester.send_raw(json.dumps(batch))
+        except (TransportError, ProtocolError, RequestTimeout,
+                SafetyLimitExceeded):
+            if not self.pentester.is_alive():
+                return [make_finding(
+                    "BATCH_BOMB_CRASH",
+                    severity="HIGH",
+                    confidence=55,
+                    verified=True,
+                    evidence=["batch size {}".format(BATCH_SIZE)],
+                    note="server exited on a large batch",
+                )]
+            return []
+        elapsed = time.perf_counter() - start
+        if not self.pentester.ping(timeout=2.0):
+            if not self.pentester.is_alive():
+                return [make_finding(
+                    "BATCH_BOMB_CRASH",
+                    severity="HIGH",
+                    confidence=55,
+                    verified=True,
+                    evidence=["batch size {}".format(BATCH_SIZE)],
+                    note="server exited on a large batch",
+                )]
+            return [make_finding(
+                "BATCH_BOMB_CRASH",
+                severity="HIGH",
+                confidence=50,
+                verified=False,
+                evidence=[
+                    "batch size {}".format(BATCH_SIZE),
+                    "no response to liveness ping",
+                ],
+                note="server unresponsive after a large batch",
+            )]
+        if elapsed > 3:
+            return [make_finding(
+                "BATCH_PROCESSING_LAG",
+                severity="MEDIUM",
+                confidence=35,
+                evidence=[
+                    "{} requests took {:.2f}s".format(BATCH_SIZE, elapsed),
+                ],
+                note="batch processing lag",
+            )]
+        return []
+
+    def _test_parallel_flood(self, tool):
+        concurrency = self.pentester.policy.concurrency(8)
+        total = concurrency * 2
+        payload = {"name": tool.get("name"), "arguments": {}}
+
+        def request():
+            try:
+                self.pentester.send(
+                    "tools/call", payload, skip_analysis=True, timeout=5)
                 return True
-            except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                logging.debug(f"Parallel flood make_request error: {e}")
+            except (TransportError, ProtocolError, RequestTimeout,
+                    SafetyLimitExceeded):
                 return False
-        
+
         try:
-            start = time.time()
-            with ThreadPoolExecutor(max_workers=50) as executor:
-                futures = [executor.submit(make_request) for _ in range(100)]
-                wait(futures, timeout=10)
-                results = [f.result() for f in futures if f.done()]
-            elapsed = time.time() - start
-            
-            success_rate = sum(results) / len(results) if results else 0
-            if success_rate < 0.5:
-                findings.append({
-                    'type': 'CONNECTION_POOL_EXHAUSTION',
-                    'tool': tool['name'],
-                    'severity': 'HIGH',
-                    'note': f'Only {success_rate*100:.0f}% requests succeeded under load'
-                })
-        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-            findings.append({
-                'type': 'DOS_CONCURRENT_FLOOD',
-                'severity': 'CRITICAL',
-                'note': f'Server crashed under concurrent load: {e}'
-            })
-        
-        return findings
-    
-    def _test_connection_exhaustion(self, tool):
-        """Test connection pool starvation"""
-        findings = []
-        
+            with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                results = list(executor.map(
+                    lambda _: request(), range(total)))
+        except (RuntimeError, OSError) as exc:
+            logger.debug("parallel flood executor failed: %s", exc)
+            return []
+        if not self.pentester.ping(timeout=2.0):
+            if not self.pentester.is_alive():
+                return [make_finding(
+                    "DOS_CONCURRENT_FLOOD",
+                    severity="HIGH",
+                    confidence=75,
+                    verified=True,
+                    evidence=["{} concurrent requests".format(total)],
+                    note="server exited under concurrent load",
+                )]
+            return [make_finding(
+                "DOS_CONCURRENT_FLOOD",
+                severity="HIGH",
+                confidence=55,
+                verified=False,
+                evidence=[
+                    "{} concurrent requests".format(total),
+                    "no response to liveness ping",
+                ],
+                note="server unresponsive under concurrent load",
+            )]
+        success_rate = sum(results) / total if results else 0
+        if success_rate < 0.5:
+            return [make_finding(
+                "CONNECTION_POOL_EXHAUSTION",
+                tool=tool.get("name"),
+                severity="MEDIUM",
+                confidence=40,
+                evidence=[
+                    "{:.0f}% of requests succeeded".format(
+                        success_rate * 100),
+                ],
+                note="degraded service under bounded concurrency",
+            )]
+        return []
+
+    def _recover(self):
+        if self.pentester.is_alive() and self.pentester.ping(timeout=2.0):
+            return
         try:
-            # Attempt to open multiple connections rapidly
-            start = time.time()
-            for i in range(50):
-                try:
-                    params = {"name": tool['name'], "arguments": {}}
-                    self.pentester.send("tools/call", params)
-                except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                    logging.debug(f"Connection exhaustion test error: {e}")
-            elapsed = time.time() - start
-            
-            # If server slowed down significantly (connection pool exhausted)
-            if elapsed > 10:
-                findings.append({
-                    'type': 'CONNECTION_POOL_EXHAUSTION',
-                    'tool': tool['name'],
-                    'severity': 'HIGH',
-                    'note': f'50 requests took {elapsed:.2f}s (avg {elapsed/50:.2f}s each)'
-                })
-        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-            if 'connection' in str(e).lower() or 'refused' in str(e).lower():
-                findings.append({
-                    'type': 'CONNECTION_EXHAUSTION',
-                    'tool': tool['name'],
-                    'severity': 'CRITICAL',
-                    'note': f'Connection pool exhausted: {str(e)[:100]}'
-                })
-            else:
-                logging.debug(f"Connection exhaustion test error: {e}")
-        
-        return findings
+            self.pentester.restart_server(initialize=True)
+        except (TransportError, ProtocolError, RequestTimeout,
+                OSError) as exc:
+            logger.error("resource exhaustion recovery failed: %s", exc)

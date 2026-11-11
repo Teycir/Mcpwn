@@ -30,7 +30,7 @@ jobs:
             npx -y @modelcontextprotocol/server-filesystem /tmp
       
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: report.sarif
 ```
@@ -61,12 +61,13 @@ jobs:
       
       - name: Mcpwn MCP Scan
         run: |
-          python3 mcpwn.py --profile paranoid \
+          python3 mcpwn.py --profile profiles/paranoid.json \
+            --fail-on high \
             --output-sarif mcpwn-results.sarif \
             npx -y @modelcontextprotocol/server-memory
       
       - name: Upload All Results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: |
             trivy-results.sarif
@@ -128,7 +129,7 @@ services:
 
 echo "Running MCP security scan...
 python3 mcpwn.py --profile profiles/paranoid.json \
-  --allowlist test_data/allowlist.example.json \
+  --safe-mode \
   --output-json scan-results.json \
   python3 mcp-server/server.py
 

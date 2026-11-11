@@ -1,9 +1,10 @@
 [run]
 source = .
-omit = 
+omit =
     tests_unit/*
     test_data/*
     .mypy_cache/*
+    .pytest_cache/*
     __pycache__/*
     setup.py
 

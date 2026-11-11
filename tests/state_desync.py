@@ -1,90 +1,114 @@
-"""State desynchronization tests"""
+"""Protocol state violation tests.
+
+Each probe runs on a freshly spawned server: the previous implementation reused
+an already-initialized process, so the "double initialize" check fired on every
+scan even when the server correctly rejected a second initialize.
+"""
+from __future__ import annotations
+
 import logging
+
+from core.evidence import make_finding
+from core.protocol import (
+    JsonRpcError,
+    ProtocolError,
+    RequestTimeout,
+    TransportError,
+    error_code,
+    result_of,
+)
+
+logger = logging.getLogger("mcpwn.state_desync")
 
 
 class StateDesyncTest:
-    """Test protocol state violations"""
+    """Test protocol state violations (skip/duplicate initialize)."""
+
     def __init__(self, pentester):
         self.pentester = pentester
 
     def run(self):
-        """Execute state desync tests"""
         findings = []
-
-        # Test: Skip initialize
         findings.extend(self._test_skip_initialize())
-
-        # Test: Double initialize
         findings.extend(self._test_double_initialize())
-
+        self._restore()
         return findings
 
     def _test_skip_initialize(self):
-        """Test calling methods without initialization"""
-        findings = []
-        self.pentester.start()
+        """tools/list before initialize must be rejected."""
         try:
-            resp, _ = self.pentester.send("tools/list")
-            if isinstance(resp, dict) and 'result' in resp:
-                findings.append({
-                    'type': 'STATE_BYPASS',
-                    'detail': 'tools/list executed without initialize',
-                    'severity': 'HIGH'
-                })
-            elif isinstance(resp, dict) and 'error' not in resp:
-                findings.append({
-                    'type': 'STATE_BYPASS',
-                    'detail': 'Server ignored uninitialized state',
-                    'severity': 'MEDIUM'
-                })
-        except (RuntimeError, IOError, OSError, TimeoutError) as e:
-            logging.debug("Skip initialize test error: %s", e)
+            self.pentester.restart_server(initialize=False)
+        except (TransportError, ProtocolError, OSError) as exc:
+            logger.warning("could not start a fresh server: %s", exc)
+            return []
+        try:
+            response, _ = self.pentester.send(
+                "tools/list", {}, skip_analysis=True)
+        except (TransportError, RequestTimeout, ProtocolError) as exc:
             if not self.pentester.is_alive():
-                findings.append({
-                    'type': 'STATE_CRASH',
-                    'detail': f'Server crashed on uninitialized call: {e}',
-                    'severity': 'CRITICAL'
-                })
-        finally:
-            self._cleanup()
-        return findings
+                return [make_finding(
+                    "STATE_CRASH", tool=None,
+                    note="server died on tools/list before initialize",
+                    evidence=[str(exc)], severity="HIGH",
+                    confidence=70, verified=True)]
+            return []
+        code = error_code(response)
+        if code is None:
+            tools = []
+            try:
+                result = result_of(response)
+                if isinstance(result, dict):
+                    tools = result.get("tools") or []
+            except JsonRpcError:
+                tools = []
+            return [make_finding(
+                "STATE_BYPASS",
+                note="tools/list succeeded before initialize",
+                evidence=[
+                    "returned {} tool(s) without initialization".format(
+                        len(tools) if isinstance(tools, list) else 0),
+                ],
+                severity="MEDIUM",
+                confidence=75 if tools else 50,
+                verified=bool(tools),
+            )]
+        if code in (-32002, -32600):
+            return []
+        logger.debug("unexpected error for uninitialized tools/list: %s", code)
+        return []
 
     def _test_double_initialize(self):
-        """Test double initialization"""
-        findings = []
-        self.pentester.start()
+        """A second initialize on an initialized session is a state reset."""
         try:
-            init_params = {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "audit-tool", "version": "1.0"}
-            }
-            self.pentester.send("initialize", init_params)
-            self.pentester.send_notification("notifications/initialized")
-            resp, _ = self.pentester.send("initialize", init_params)
-            if isinstance(resp, dict) and 'result' in resp:
-                findings.append({
-                    'type': 'STATE_RESET',
-                    'detail': 'Server accepted double initialization',
-                    'severity': 'MEDIUM'
-                })
-        except (RuntimeError, IOError, OSError, TimeoutError) as e:
-            logging.debug("Double initialize test error: %s", e)
-            if not self.pentester.is_alive():
-                findings.append({
-                    'type': 'STATE_CRASH',
-                    'detail': f'Server crashed on double init: {e}',
-                    'severity': 'CRITICAL'
-                })
-        finally:
-            self._cleanup()
-        return findings
-
-    def _cleanup(self):
-        """Safely terminate process"""
-        if not self.pentester.is_alive():
+            self.pentester.restart_server(initialize=False)
+            self.pentester.initialize()
+            session = self.pentester.session
+            if session is None:
+                return []
             try:
-                self.pentester.restart_server()
-            except (RuntimeError, OSError, TimeoutError) as e:
-                logging.debug("Cleanup restart failed: %s", e)
-                return
+                session.initialize(force=True)
+            except (JsonRpcError, ProtocolError, TransportError,
+                    RequestTimeout) as exc:
+                logger.debug("server rejected duplicate initialize: %s", exc)
+                return []
+            return [make_finding(
+                "STATE_RESET",
+                note="server accepted a second initialize on an initialized "
+                     "session",
+                evidence=["initialize returned a result twice"],
+                severity="LOW",
+                confidence=45,
+                verified=True,
+            )]
+        except (TransportError, ProtocolError, RequestTimeout, OSError) as exc:
+            logger.warning("double initialize test failed: %s", exc)
+            return []
+        finally:
+            self._restore()
+
+    def _restore(self):
+        try:
+            self.pentester.restart_server(initialize=True)
+        except (TransportError, ProtocolError, RequestTimeout,
+                OSError) as exc:
+            logger.error("state desync restore failed: %s", exc)

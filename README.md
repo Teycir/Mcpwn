@@ -17,447 +17,279 @@ _Scan the QR code or copy the wallet address above._
 </div>
 <!-- donation:eth:end -->
 
-# Mcpwn - MCP Security Testing Framework
+# Mcpwn — MCP Security Testing Framework
 
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![MCP](https://img.shields.io/badge/MCP-2025--12-orange.svg)](https://modelcontextprotocol.io)
-[![Security](https://img.shields.io/badge/security-testing-red.svg)](https://github.com/Teycir/Mcpwn)
-[![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen.svg)](tests_unit/)
+[![MCP](https://img.shields.io/badge/MCP-2025--06--18-orange.svg)](https://modelcontextprotocol.io)
+[![Tests](https://img.shields.io/badge/tests-160%20passing-brightgreen.svg)](tests_unit/)
+[![Coverage](https://img.shields.io/badge/coverage-70%25-yellowgreen.svg)](docs/TESTING.md)
 
-**Automated security scanner for Model Context Protocol servers that detects RCE, path traversal, prompt injection, and protocol vulnerabilities.**
+Mcpwn is an automated security scanner for **Model Context Protocol** servers.
+It speaks MCP over **stdio** and **Streamable HTTP**, exercises tool arguments,
+resources, metadata, protocol state and authorization boundaries, and reports
+only evidence-backed findings.
 
-## Why Mcpwn?
+**One vulnerable tool can mean full host compromise for the agent.**
 
-MCP servers expose powerful capabilities to AI agents. **One vulnerable tool = full system compromise.**
+## Safety first
 
-**What Mcpwn Does:**
-- ✅ Detects **RCE** via command injection in tool arguments
-- ✅ Finds **path traversal** vulnerabilities in file operations  
-- ✅ Identifies **prompt injection** risks in LLM-facing tools
-- ✅ Tests **protocol fuzzing** and state desync attacks
-- ✅ Generates **structured reports** (JSON/SARIF) for AI analysis & CI/CD
-- ✅ **Stages findings for AI** - automated baseline → AI deep analysis
-- ✅ **Zero dependencies** - pure Python stdlib
+Active tests that can flood, exhaust or delay a target are **disabled by
+default**. Enable them deliberately:
 
-**Quick Start:**
 ```bash
-# Scan any MCP server in 5 seconds
-python mcpwn.py --quick npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# Get JSON report for AI analysis
-python mcpwn.py --output-json report.json npx -y @modelcontextprotocol/server-filesystem /tmp
+python3 mcpwn.py --allow-destructive ...   # resource exhaustion, floods, timing
+python3 mcpwn.py --safe-mode ...           # skip destructive and fuzzing suites
 ```
 
-**Real Impact:** Mcpwn found RCE vulnerabilities in production MCP servers by testing tool argument injection patterns that manual code review missed.
+All probes are bounded by `--max-requests`, `--max-concurrency`,
+`--max-payload-bytes` and `--flood-count`. See [THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
-## Installation
+## Quick start
 
 ```bash
-# Clone repository
 git clone https://github.com/Teycir/Mcpwn.git
 cd Mcpwn
 
-# Make executable
-chmod +x mcpwn.py
+# Non-destructive scan of the bundled vulnerable demo server
+python3 mcpwn.py --safe-mode --output-json report.json \
+    python3 test_data/dvmcp_server.py
 
-# Run directly (no dependencies needed)
-python3 mcpwn.py --help
+# Fast RCE-only scan
+python3 mcpwn.py --quick --rce-only python3 test_data/dvmcp_server.py
+
+# Streamable HTTP endpoint
+python3 mcpwn.py --target http://127.0.0.1:8080/mcp \
+    --header "Authorization: Bearer $MCP_TOKEN" \
+    --output-json report.json
 ```
 
-## Prerequisites
+Python 3.9+ is required. The scanner uses only the standard library; the
+development tools (pytest, flake8, bandit) live in `requirements-dev.txt`.
 
-- Python 3.8+
-- Core framework uses stdlib only (no dependencies)
+## GitHub-hosted MCP servers
 
-## Features
-
-- **Semantic Detection**: Pattern-based exploit detection (RCE, file read, timing attacks)
-- **Side-Channel Detection**: Timing, size, and behavioral anomaly detection
-- **Paranoid Profile**: Production security profile with enhanced thresholds
-- **Thread-Safe**: Concurrent operations with proper locking
-- **Configurable Timeouts**: Per-request timeout control with deadline tracking
-- **Payload Deduplication**: Efficient testing without redundant payloads
-- **Structured Logging**: Comprehensive logging with severity levels
-- **Safe Mode**: Skip destructive tests (protocol fuzzing, subscription flood)
-- **Severity Aggregation**: Automatic categorization by CRITICAL/HIGH/MEDIUM/LOW
-- **CI/CD Integration**: SARIF output for GitHub Security, GitLab, and other platforms
-
-## Usage
+Mcpwn can discover MCP repositories through the GitHub API and assess them
+without executing code. Put a token in the local, gitignored `.env`:
 
 ```bash
-# Basic scan
-python mcpwn.py npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# Quick scan (5s timeout, stops on first tool injection finding)
-python mcpwn.py --quick npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# RCE-only mode (skips non-RCE tests)
-python mcpwn.py --rce-only npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# Safe mode (skip destructive tests: protocol fuzzing, subscription flood)
-python mcpwn.py --safe-mode npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# Custom timeout (default: 10s)
-python mcpwn.py --timeout 60 npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# Generate reports with severity breakdown
-python mcpwn.py --output-json report.json --output-html report.html npx ...
-
-# Parallel flooding
-python mcpwn.py --parallel npx ...
-
-# SARIF output for CI/CD (GitHub Security, GitLab)
-python mcpwn.py --output-sarif report.sarif npx ...
-
-# Paranoid mode (production security profile with side-channel detection)
-python mcpwn.py --profile profiles/paranoid.json npx ...
-
-# Test against vulnerable server
-python mcpwn.py python3 test_data/dvmcp_server.py
+cp .env.example .env
+# edit .env: Github_Token=github_pat_...
 ```
 
-## Example Output
+```bash
+# Discover and profile repositories (metadata + bounded source inspection)
+python3 mcpwn.py --github-search "topic:mcp-server language:python" \
+    --github-limit 5 --github-json github-report.json \
+    --github-markdown github-report.md
 
+# Profile one repository
+python3 mcpwn.py --github-repo modelcontextprotocol/servers \
+    --github-json github-report.json
+
+# Inspect the Docker command without running the repository
+python3 mcpwn.py --github-repo owner/repo --github-run --github-dry-run \
+    --allow-remote-code
+
+# Run a launch recipe in the sandbox (requires Docker)
+python3 mcpwn.py --github-repo owner/repo --github-run \
+    --allow-remote-code --github-network --github-json github-report.json
 ```
-[INFO] Starting Mcpwn
-[INFO] Discovery phase...
-[INFO] Found 2 tools, 0 resources
-[INFO] Testing tool injection...
-[WARNING] execute_command: RCE via command
-[WARNING]   Detection: uid=1000(user) gid=1000(user)
-[INFO] Testing path traversal...
-[WARNING] Path traversal: file://../../../etc/passwd
-[WARNING]   Detection: root:x:0:0:root
-[INFO] Mcpwn complete
-[INFO] JSON report: report.json
+
+Static mode reports review indicators (install scripts, unpinned dependencies,
+dangerous process/network surfaces) and launch candidates. Runtime mode is
+opt-in: `--github-run` requires `--allow-remote-code` and executes only inside a
+Docker container with a read-only root, dropped capabilities, no-new-privileges
+and network disabled by default. The token is never passed to the sandbox or
+written to a report. See [GITHUB_TESTING.md](docs/GITHUB_TESTING.md).
+
+## What it checks
+
+| Area | Tests | Mode |
+|---|---|---|
+| Command injection / RCE | `tool_injection` | active, reproducible |
+| Path traversal | `resource_traversal` | active, reproducible |
+| Tool poisoning | `tool_poisoning` | static |
+| Credential exposure | `credential_exposure` | static, masked evidence |
+| Cross-tool attack chains | `attack_chains` | static, potential only |
+| Confused deputy / IDOR | `confused_deputy` | active, control comparison |
+| HTTP authorization | `auth_bypass` | active (HTTP only) |
+| SSRF | `ssrf_injection` | active, callback-confirmed |
+| OOB DNS exfiltration | `oob_detection` | active, callback-confirmed |
+| Output / prompt injection | `prompt_injection` | active, confidence-graded |
+| Schema / prototype pollution | `schema_pollution` | active |
+| Unsafe deserialization | `deserialization` | destructive |
+| Protocol state desync | `state_desync` | active, fresh session |
+| Capability fuzzing / abuse | `capability_fuzzing`, `capability_abuse` | active (fuzzing requires `--allow-destructive`) |
+| JSON-RPC parser robustness | `protocol_fuzzing` | active, liveness-verified |
+| Race conditions | `race_condition` | destructive, reproducible |
+| Resource exhaustion | `resource_exhaustion` | destructive, bounded |
+| Subscription flood | `subscription_flood` | destructive, bounded |
+| Side channels | `side_channel` | active, low confidence |
+
+## Protocol support
+
+- MCP **stdio** (newline-delimited JSON-RPC 2.0).
+- MCP **Streamable HTTP** with `Mcp-Session-Id` and SSE responses.
+- `initialize` negotiation (`2025-06-18`, `2025-03-26`, `2024-11-05`,
+  `2024-10-07`), with `--strict-protocol` to reject unknown versions.
+- `notifications/initialized`, server-initiated requests (`ping`,
+  `roots/list`), pagination (`nextCursor`), prompts/resources/templates.
+- Id-correlated responses, late-response accounting, concurrent requests and
+  per-request timeouts. Transport failures are typed and never silently
+  swallowed.
+
+## Evidence model
+
+**Severity** answers "how bad if true". **Confidence** answers "how sure are
+we". They are reported separately, and findings carry a `status`:
+
+| Status | Meaning |
+|---|---|
+| `confirmed` | Reproduced, verified evidence (≥85 confidence) |
+| `likely` | Strong evidence, not independently reproduced |
+| `possible` | Heuristic or single observation |
+| `informational` | Context only; not a vulnerability claim |
+
+Examples:
+
+- Command output (`uid=…`) reproduced twice → `RCE`, CRITICAL,
+  `confirmed`.
+- A reproducible delay with `sleep` but no output oracle → `BLIND_RCE_TIMING`,
+  MEDIUM, `possible` — **not** confirmed RCE.
+- A timing side channel → `TIMING_SIDE_CHANNEL`, LOW, `informational`.
+- Tool metadata with hidden Unicode → `TOOL_POISONING`, HIGH, static review.
+
+Findings are deduplicated by `(test, type, tool, arg, uri, title)`; repeated
+payloads merge into one finding with combined evidence and an `occurrences`
+count. Secrets are masked before they enter a report.
+
+## Reports
+
+```bash
+python3 mcpwn.py --output-json report.json \
+                 --output-html report.html \
+                 --output-sarif report.sarif \
+                 python3 my_server.py
 ```
 
-## Attack Surface
+JSON includes `summary.total`, `by_type`, `by_severity`, `by_confidence` and
+`verified`. SARIF includes rules, severity levels, fingerprints, CWE and
+confidence properties for CI/CD. HTML is self-contained and escapes all
+content.
 
-**Currently Implemented:**
-- State desync (skip/double initialize)
-- Capability fuzzing (malformed initialization)
-- Tool argument injection (command injection, path traversal)
-- Resource path traversal
-- Subscription flooding (parallel, skipped in safe mode)
-- Prompt injection (indirect LLM jailbreak)
-- Protocol fuzzing (malformed JSON-RPC, skipped in safe mode)
-- OOB detection (DNS exfiltration)
-- Race condition testing
-- Resource exhaustion
-- Side-channel detection (timing, size, behavioral patterns)
+## CLI reference
 
-**Planned (test files exist, not yet integrated):**
-- SSRF injection
-- Deserialization attacks
-- Schema pollution
-- Auth bypass
-
-## Detection
-
-Semantic indicators, not crashes:
-- `uid=`, `root:x:` → RCE
-- `-----BEGIN`, `PRIVATE KEY` → File read
-- Statistical timing deviation → Blind injection
-- Prompt echo → Indirect prompt injection
-- DNS query capture → OOB exfiltration
+| Flag | Description | Default |
+|---|---|---|
+| `--target URL` | Streamable HTTP endpoint | none |
+| `--header NAME:VALUE` | HTTP header (repeatable) | none |
+| `--safe-mode` | Skip destructive and fuzzing suites | off |
+| `--allow-destructive` | Enable exhaustion, flood, race and deserialization probes | off |
+| `--quick` | Fewer payloads, 5 s timeout, stop on first injection finding | off |
+| `--rce-only` | Only the command-injection suite | off |
+| `--tags TAG...` | Run only matching suites (`protocol`, `fuzzing`, `injection`, `static`, `auth`, `ssrf`, `oob`, `timing`) | all |
+| `--exclude-tags TAG...` | Skip matching suites | none |
+| `--timeout SECONDS` | Per-request timeout | 10 |
+| `--profile FILE` | Threshold/behavior profile (e.g. `profiles/paranoid.json`) | none |
+| `--parallel` | Concurrent subscription flooding | off |
+| `--max-requests N` | Global request budget | 20000 |
+| `--max-concurrency N` | Worker ceiling | 8 |
+| `--max-payload-bytes N` | Probe size ceiling | 1 MiB |
+| `--flood-count N` | Subscriptions in the flood test | 200 |
+| `--oob-port N` | UDP port for the OOB DNS listener | 53 |
+| `--oob-callback-base URL` | Externally reachable SSRF callback base | local listener |
+| `--ssrf-all-args` | Probe all arguments for SSRF, not only URL-like ones | off |
+| `--fail-on LEVEL` | Exit 2 at or above this severity (`low`…`critical`) | `none` |
+| `--strict-protocol` | Reject unknown negotiated protocol versions | off |
+| `--verbose` | Debug logging | off |
+| `--output-json/-html/-sarif` | Report paths | none |
+| `--github-repo OWNER/REPO` | Assess a GitHub MCP repository (repeatable) | none |
+| `--github-search QUERY` | Discover MCP repositories through GitHub search | none |
+| `--github-limit N` | Maximum search results (1–50) | 10 |
+| `--github-max-files N` | Source files inspected per repository | 25 |
+| `--github-include-archived` | Include archived repositories in search | off |
+| `--github-no-code` | Metadata/README only; skip source blobs | off |
+| `--github-json PATH` | GitHub assessment JSON | none |
+| `--github-markdown PATH` | GitHub assessment Markdown | none |
+| `--github-token-env NAME` | Environment variable holding the token | `GITHUB_TOKEN` |
+| `--github-run` | Run a launch recipe in Docker | off |
+| `--github-dry-run` | Print the sandbox command without executing | off |
+| `--github-command CMD` | Override the launch command (one repository) | none |
+| `--github-network` | Allow network inside the Docker sandbox | off |
+| `--github-sandbox {auto,docker}` | Runtime sandbox backend | `auto` |
+| `--github-image IMAGE` | Docker image for `--github-run` | inferred |
+| `--allow-remote-code` | Required gate for `--github-run` | off |
 
 ## Architecture
 
 ```
-Mcpwn/
-├── mcpwn.py              # CLI entry point with logging config
-├── payloads.py           # Attack payloads & indicators
-├── core/
-│   ├── pentester.py      # Main orchestrator (thread-safe, timeout handling)
-│   ├── detector.py       # Semantic detection engine
-│   └── reporter.py       # JSON/HTML/SARIF reports with severity aggregation
-├── profiles/
-│   └── paranoid.json     # Production security profile
-├── tests/
-│   ├── state_desync.py        # Active
-│   ├── capability_fuzzing.py  # Active
-│   ├── tool_injection.py      # Active
-│   ├── resource_traversal.py  # Active
-│   ├── subscription_flood.py  # Active
-│   ├── prompt_injection.py    # Active
-│   ├── protocol_fuzzing.py    # Active
-│   ├── oob_detection.py       # Active
-│   ├── race_condition.py      # Active
-│   ├── resource_exhaustion.py # Active
-│   ├── side_channel.py        # Active
-│   ├── ssrf_injection.py      # Planned
-│   ├── deserialization.py     # Planned
-│   ├── schema_pollution.py    # Planned
-│   └── auth_bypass.py         # Planned
-├── tests_unit/           # 54 pytest unit tests
-├── test_data/
-│   ├── dvmcp_server.py        # Deliberately vulnerable MCP server
-│   ├── allowlist.example.json # Allowlist configuration example
-│   └── enforcer.py            # Thread-safe runtime enforcer
-└── CI_CD_INTEGRATION.md  # Deployment guide
+CLI → MCPPentester → McpSession → Transport (stdio | Streamable HTTP)
+                        │              └── reader thread → pending futures by id
+                        ├── SafetyPolicy (budget, gates, limits)
+                        └── Evidence → Reporter (JSON / HTML / SARIF)
 ```
 
-## Report Format
+GitHub mode is a separate target provider:
 
-JSON reports include:
-```json
-{
-  "summary": {
-    "total": 15,
-    "by_type": {"RCE": 3, "FILE_READ": 2, "SSRF": 1},
-    "by_severity": {"CRITICAL": 5, "HIGH": 3, "MEDIUM": 4, "LOW": 3}
-  },
-  "findings": [...]
-}
+```
+GitHub API → GitHubClient → static assessment
+                         └→ Docker sandbox → MCPPentester → McpSession
 ```
 
-## Configuration Options
-
-| Flag | Description | Default |
-|------|-------------|----------|
-| `--safe-mode` | Skip destructive tests | False |
-| `--quick` | Fast scan (5s timeout, stops on first tool injection finding) | False |
-| `--rce-only` | Skip non-RCE tests | False |
-| `--profile` | Security profile (e.g., profiles/paranoid.json) | None |
-| `--timeout` | Request timeout in seconds (quick mode uses 5s) | 10 |
-| `--parallel` | Enable parallel flooding | False |
-| `--profile` | Security profile JSON (e.g. `profiles/paranoid.json`) | None |
-| `--output-json` | Export JSON report | None |
-| `--output-html` | Export HTML report | None |
-| `--output-sarif` | Export SARIF report (CI/CD) | None |
-
-## Thread Safety
-
-- Request ID generation protected by lock
-- Health checks use dedicated lock
-- Send operations protected by transport lock
-- Connection pooling with cleanup
-- Safe concurrent test execution
-
-## Troubleshooting
-
-**Port conflicts (OOB DNS test)**
-The OOB test binds a UDP DNS listener on port 5353. If it is already in use (often mDNS/avahi), the OOB tier logs the bind failure and is skipped.
-```bash
-# Check if UDP port 5353 is in use
-lsof -i :5353
-# Kill conflicting process or wait for cleanup
-```
-
-**Timeout errors**
-```bash
-# Increase timeout for slow servers
-python mcpwn.py --timeout 60 ...
-```
-
-**Server crashes during tests**
-```bash
-# Use safe mode to skip destructive tests
-python mcpwn.py --safe-mode ...
-```
-
-**False positives**
-- Resource traversal now requires 2+ markers for detection
-- Adjust `LEAK_MARKERS` in `tests/resource_traversal.py` if needed
+Full design, sequence diagrams and the extension guide:
+[ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Threat surface and confidence policy: [THREAT_MODEL.md](docs/THREAT_MODEL.md).
+Assessment and backlog: [ENGINEERING_ASSESSMENT.md](docs/ENGINEERING_ASSESSMENT.md).
 
 ## Testing
 
-### Running Unit Tests
-
 ```bash
-# Run all unit tests
-python3 -m pytest tests_unit/ -v
-
-# Quick test run
-python3 -m pytest tests_unit/ -q
-
-# Run specific test file
-python3 -m pytest tests_unit/test_detector.py -v
+python3 -m pytest tests_unit -q
+python3 -m pytest tests_unit --cov=. --cov-report=term-missing
+python3 -m flake8 core tests tests_unit mcpwn.py payloads.py \
+    test_data/mcp_test_server.py
+.venv-tools/bin/bandit -r core mcpwn.py payloads.py -ll
 ```
 
-### Integration Testing
-
-Test against the included vulnerable server:
-```bash
-# Basic integration test
-python3 mcpwn.py python3 test_data/dvmcp_server.py
-
-# Quick validation (5s timeout)
-python3 mcpwn.py --quick --rce-only python3 test_data/dvmcp_server.py
-```
-
-Expected findings:
-- RCE via `execute_command` tool
-- Path traversal via `read_file` tool
-
-### Coverage Analysis
-
-```bash
-# Install coverage tools
-pip install pytest-cov
-
-# Run with coverage report
-python3 -m pytest tests_unit/ --cov=. --cov-report=term-missing
-
-# Generate HTML coverage report
-python3 -m pytest tests_unit/ --cov=. --cov-report=html
-# Open htmlcov/index.html in browser
-```
-
-### Test Suite Overview
-
-**54 tests covering:**
-- **Core Components** (21 tests)
-  - Semantic detector (9 tests)
-  - Reporter (7 tests)
-  - Payloads (5 tests)
-- **Side-Channel Detection** (9 tests)
-  - Timing variance validation
-  - Size anomaly detection
-  - Behavioral pattern matching
-  - False positive prevention
-- **Edge Cases** (10 tests)
-  - Malformed input handling
-  - Unicode and special characters
-  - Large data processing
-  - Concurrent access scenarios
-- **Integration** (14 tests)
-  - CLI argument validation
-  - End-to-end scanning
-  - Report generation
-
-**Coverage Requirements:**
-- Core modules: >80% coverage
-- Critical paths: 100% coverage
-- Edge cases: Comprehensive error handling
-
-### Development Testing
-
-```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run lintharacters
-  - Large data processing
-  - Concurrent access scenarios
-- **Integration** (14 tests)
-  - CLI argument validation
-  - End-to-end scanning
-  - Report generation
-
-**Coverage Requirements:**
-- Core modules: >80% coverage
-- Critical paths: 100% coverage
-- Edge cases: Comprehensive error handling
-
-### Development Testing
-
-```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run linting
-flake8 . --exclude=.git,.mypy_cache,__pycache__
-
-# Run security checks
-bandit -r . -ll --exclude=.git,.mypy_cache,tests_unit
-```
-
-## AI Integration
-
-Mcpwn is designed to work seamlessly with AI assistants for enhanced security analysis:
-
-**AI-Assisted Workflow:**
-```bash
-# 1. Run automated scan
-python mcpwn.py --output-json findings.json npx -y @modelcontextprotocol/server-filesystem /tmp
-
-# 2. AI analyzes structured output
-# - Parses JSON findings
-# - Identifies vulnerability patterns
-# - Prioritizes by severity
-
-# 3. AI performs deep analysis
-# - Validates findings in context
-# - Finds logic flaws Mcpwn missed
-# - Generates remediation guidance
-```
-
-**Benefits:**
-- **Structured Data**: JSON/SARIF output for AI parsing
-- **Evidence-Based**: Concrete exploits vs speculation
-- **Time Savings**: AI focuses on interpretation, not pattern matching
-- **Validation**: Confirm AI-suggested vulnerabilities with automated testing
-- **Training**: Mcpwn findings teach AI about MCP vulnerabilities
-
-**Best Practice:** Use Mcpwn for automated baseline → AI for deep contextual analysis → Comprehensive security coverage
+Current snapshot: **160 tests passing**, **70% coverage**, flake8 clean, no
+medium/high Bandit findings. Methodology and known gaps:
+[TESTING.md](docs/TESTING.md).
 
 ## Limitations
 
-**What Mcpwn Detects:**
-- Runtime exploits (RCE, path traversal, injection)
-- Protocol-level vulnerabilities
-- Resource exhaustion and DoS
-- Pattern-based security issues
-
-**What Mcpwn Misses:**
-- Configuration vulnerabilities (exposed credentials, insecure settings)
-- Business logic flaws
-- Authorization bypass requiring context
-- Complex multi-step attack chains
-- Novel vulnerabilities without known patterns
-
-**Recommendation:** Use Mcpwn for automated baseline scanning and CI/CD integration, but complement with manual security review for comprehensive coverage. Automated tools find known patterns; human analysis finds logic flaws.
-
-## FAQ
-
-**Q: How long does a typical scan take?**  
-A: Quick mode (`--quick --rce-only`) takes ~5 seconds. Full scan takes 30-60 seconds depending on server complexity.
-
-**Q: Will this crash my MCP server?**  
-A: Use `--safe-mode` to skip destructive tests (protocol fuzzing, subscription flood). Tool injection and path traversal tests are non-destructive.
-
-**Q: Does this work with any MCP server?**  
-A: Yes, any server implementing the Model Context Protocol (2024-11-05 spec). Works with Python, TypeScript, Go implementations.
-
-**Q: How do I integrate this into CI/CD?**  
-A: Use `--output-sarif report.sarif` to generate SARIF format compatible with GitHub Security, GitLab, and other platforms.
-
-**Q: What's the difference between --quick and --rce-only?**  
-A: `--quick` reduces timeout to 5s and stops on first finding. `--rce-only` skips non-RCE tests (path traversal, prompt injection, etc). Combine both for fastest scan.
-
-**Q: Can I test my own MCP server?**  
-A: Yes! Point Mcpwn at your server command: `python mcpwn.py python3 my_server.py` or `python mcpwn.py node server.js`
-
-**Q: What if I get false positives?**  
-A: Check the detection patterns in the JSON report. Path traversal requires 2+ markers. Adjust `LEAK_MARKERS` in `tests/resource_traversal.py` if needed.
-
-**Q: Does this require root/admin privileges?**  
-A: No, runs with normal user privileges. Only needs permission to execute the MCP server command.
-
-**Q: How does semantic detection work?**  
-A: Instead of looking for crashes, Mcpwn analyzes response content for patterns like `uid=1000`, `root:x:0:0`, `-----BEGIN PRIVATE KEY`, timing deviations, etc.
-
-**Q: Can I use this with AI assistants?**  
-A: Yes! Generate JSON output (`--output-json findings.json`) and feed it to AI for deeper analysis. The structured format helps AI understand vulnerabilities in context.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details
+- Static metadata findings (poisoning, credentials, chains) require manual
+  review and are never marked confirmed.
+- Timing analysis is weak on noisy hosts; it cannot prove command execution.
+- Authorization testing needs credentials supplied with `--header`; OAuth/OIDC
+  interactive flows are not implemented.
+- The HTTP transport was verified against a local MCP-shaped server, not a
+  production third-party deployment.
+- GitHub runtime scans require a running Docker daemon. The static assessment
+  and `--github-dry-run` work without one.
+- GitHub static indicators are review prompts, not confirmed vulnerabilities;
+  dynamic tool behavior still requires a runtime scan.
+- Unauthenticated GitHub API access is limited to 60 requests/hour; use
+  `GITHUB_TOKEN` for discovery at scale.
+- Windows process semantics are not covered in this release.
+- Reading declared resources to hunt for secrets is intentionally not done by
+  default; it requires target-specific consent.
+- Mcpwn complements, but does not replace, manual review of business logic and
+  multi-step agent behavior.
 
 ## Disclaimer
 
-This tool is for security testing purposes only. Only test systems you have permission to test.
+Use this tool only on systems you are authorized to test. You are responsible
+for complying with applicable law and contracts. The authors accept no liability
+for misuse or damage.
 
 ## Author
 
 **Teycir Ben Soltane**
-- **Website**: [teycirbensoltane.tn](https://teycirbensoltane.tn)
-- **Email**: teycir@pxdmail.net
-- **GitHub**: [@Teycir](https://github.com/Teycir)
+- Website: [teycirbensoltane.tn](https://teycirbensoltane.tn)
+- Email: teycir@pxdmail.net
+- GitHub: [@Teycir](https://github.com/Teycir)
+
+## License
+
+MIT — see [LICENSE](LICENSE).

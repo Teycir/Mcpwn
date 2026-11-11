@@ -1,5 +1,4 @@
 """Unit tests for reporter"""
-import pytest
 import json
 import tempfile
 import os
@@ -100,14 +99,29 @@ def test_severity_summary():
     assert summary['LOW'] == 1
 
 def test_type_counting():
-    """Test finding type counting"""
+    """Distinct findings count separately; identical ones deduplicate"""
     reporter = Reporter()
     reporter.add_findings('test', [
-        {'type': 'RCE', 'severity': 'CRITICAL'},
-        {'type': 'RCE', 'severity': 'HIGH'},
-        {'type': 'FILE_READ', 'severity': 'MEDIUM'}
+        {'type': 'RCE', 'severity': 'CRITICAL', 'payload': '; id',
+         'tool': 'exec_a'},
+        {'type': 'RCE', 'severity': 'HIGH', 'payload': '; whoami',
+         'tool': 'exec_b'},
+        {'type': 'FILE_READ', 'severity': 'MEDIUM',
+         'payload': '/etc/passwd', 'tool': 'read'}
     ])
-    
+
     counts = reporter._count_by_type()
     assert counts['RCE'] == 2
     assert counts['FILE_READ'] == 1
+
+
+def test_duplicate_findings_are_merged():
+    """The same finding must not inflate the report"""
+    reporter = Reporter()
+    reporter.add_findings('test', [
+        {'type': 'RCE', 'severity': 'HIGH', 'payload': '; id'},
+        {'type': 'RCE', 'severity': 'CRITICAL', 'payload': '; id'},
+    ])
+    assert len(reporter.findings) == 1
+    assert reporter.findings[0]['severity'] == 'CRITICAL'
+    assert reporter.findings[0]['occurrences'] == 2

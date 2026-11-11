@@ -5,7 +5,7 @@ pytest>=8.0.0
 pytest-cov>=4.1.0
 pytest-timeout>=2.2.0
 
-# Code quality
+# Code quality and security lint
 flake8>=7.0.0
 bandit>=1.7.0
 

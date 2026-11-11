@@ -1,5 +1,9 @@
 # Mcpwn v1.0.0 Release Notes
 
+> **Historical document.** These notes describe v1.0.0. Current behavior,
+> breaking changes and fixes are documented in [CHANGELOG.md](CHANGELOG.md)
+> and [README.md](README.md).
+
 **Release Date**: December 13, 2025  
 **Author**: Teycir Ben Soltane  
 **Contact**: teycir@teycirbensoltane.tn  

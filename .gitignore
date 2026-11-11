@@ -28,6 +28,7 @@ venv/
 ENV/
 env/
 .venv
+.venv-tools/
 
 # IDE
 .vscode/
@@ -142,7 +143,6 @@ coverage/
 !REPORTS_READY.md
 !PROJECT_COMPLETE.md
 reports/test_data
-docs
 # Test artifacts
 .pytest_cache/
 *.pyc

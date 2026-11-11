@@ -1,103 +1,160 @@
-"""Side-channel detection for timing, size, and behavioral anomalies"""
-import time
-import statistics
+"""Side-channel detection for timing, size and behavioral anomalies.
+
+Findings here are deliberately low-confidence observations: a consistent slow
+response is not a directory walk, and a large response is not data theft.  They
+exist to guide manual review, not to assert exploitation.
+"""
+from __future__ import annotations
+
 import logging
+import statistics
+import time
+
+from core.evidence import make_finding
+from core.protocol import (
+    ProtocolError,
+    RequestTimeout,
+    SafetyLimitExceeded,
+    TransportError,
+    content_summary,
+    result_text,
+)
+
+logger = logging.getLogger("mcpwn.side_channel")
 
 
 class SideChannelTest:
-    """Detect side-channel attacks and risky patterns"""
-    
+    """Detect side-channel signals and risky output patterns."""
+
     def __init__(self, pentester, profile=None):
         self.pentester = pentester
         profile = profile or {}
-        self.timing_threshold = profile.get('timing_thresholds', {}).get('slow_query_ms', 500) / 1000
-        self.size_threshold = profile.get('size_thresholds', {}).get('large_response_bytes', 1048576)
-        patterns = profile.get('behavioral_patterns', {})
-        self.network_indicators = [i.lower() for i in patterns.get('network_indicators', [])]
-        self.shell_indicators = [i.lower() for i in patterns.get('shell_indicators', [])]
-        self.root_indicators = [i.lower() for i in patterns.get('filesystem_root_indicators', [])]
-    
+        self.timing_threshold = profile.get(
+            "timing_thresholds", {}).get("slow_query_ms", 500) / 1000
+        self.size_threshold = profile.get(
+            "size_thresholds", {}).get("large_response_bytes", 1048576)
+        patterns = profile.get("behavioral_patterns", {})
+        self.network_indicators = [
+            item.lower() for item in patterns.get("network_indicators", [])]
+        self.shell_indicators = [
+            item.lower() for item in patterns.get("shell_indicators", [])]
+        self.root_indicators = [
+            item.lower() for item in
+            patterns.get("filesystem_root_indicators", [])]
+
     def run(self, tool):
-        """Test for side-channel vulnerabilities"""
         findings = []
         findings.extend(self._test_timing_side_channel(tool))
         findings.extend(self._test_content_and_size(tool))
         return findings
-    
+
     def _test_timing_side_channel(self, tool):
-        """Detect timing-based side channels"""
+        """Measure three inputs; report only consistent slowness."""
         findings = []
-        tool_name = tool['name']
-        
-        for arg, spec in list(tool.get('inputSchema', {}).get('properties', {}).items())[:3]:
-            if spec.get('type') != 'string':
+        tool_name = tool.get("name", "unknown")
+        properties = list(
+            (tool.get("inputSchema") or {}).get("properties", {}).items())[:3]
+        for arg, spec in properties:
+            if not isinstance(spec, dict) or spec.get("type") != "string":
                 continue
-            
             timings = []
-            for test_val in ['a', 'aa', 'aaa']:
+            for test_value in ("a", "aa", "aaa"):
                 try:
                     start = time.time()
-                    self.pentester.send("tools/call", {"name": tool_name, "arguments": {arg: test_val}})
+                    self.pentester.send(
+                        "tools/call",
+                        {"name": tool_name, "arguments": {arg: test_value}},
+                        skip_analysis=True,
+                    )
                     timings.append(time.time() - start)
-                except (OSError, ValueError, TypeError, AttributeError, KeyError, RuntimeError, TimeoutError) as e:
-                    logging.debug(f"Timing test failed for {tool_name}.{arg}: {e}")
+                except (TransportError, ProtocolError, RequestTimeout,
+                        SafetyLimitExceeded, OSError) as exc:
+                    logger.debug("timing probe failed for %s.%s: %s",
+                                 tool_name, arg, exc)
                     continue
-            
-            if len(timings) >= 3:
-                avg = statistics.mean(timings)
-                stdev = statistics.stdev(timings) if len(timings) > 1 else 0
-                if avg > self.timing_threshold and stdev < avg * 0.5:
-                    findings.append({
-                        'type': 'TIMING_SIDE_CHANNEL',
-                        'tool': tool_name,
-                        'arg': arg,
-                        'severity': 'MEDIUM',
-                        'avg_time': f'{avg:.3f}s',
-                        'note': 'Consistent slow response indicates potential directory walk'
-                    })
-        
+            if len(timings) < 3:
+                continue
+            average = statistics.mean(timings)
+            deviation = statistics.stdev(timings) if len(timings) > 1 else 0
+            if average > self.timing_threshold and deviation < average * 0.5:
+                findings.append(make_finding(
+                    "TIMING_SIDE_CHANNEL",
+                    tool=tool_name,
+                    arg=arg,
+                    severity="LOW",
+                    confidence=25,
+                    evidence=[
+                        "mean {:.3f}s, stdev {:.3f}s".format(
+                            average, deviation),
+                        "consistent slow response; not proof of enumeration",
+                    ],
+                    note="timing observation only",
+                ))
         return findings
-    
+
     def _test_content_and_size(self, tool):
-        """Combined test for size anomalies and behavioral patterns to minimize I/O"""
+        """Combined size and behavioral-pattern scan to minimize I/O."""
         findings = []
-        tool_name = tool['name']
-        net_inds = self.network_indicators
-        shell_inds = self.shell_indicators
-        root_inds = self.root_indicators
-        
-        for arg in list(tool.get('inputSchema', {}).get('properties', {}).keys())[:3]:
+        tool_name = tool.get("name", "unknown")
+        properties = list(
+            (tool.get("inputSchema") or {}).get("properties", {}).keys())[:3]
+        for arg in properties:
             try:
-                resp, _ = self.pentester.send("tools/call", {"name": tool_name, "arguments": {arg: "test"}})
-                resp_str = str(resp)
-                resp_size = len(resp_str)
-                
-                if resp_size > self.size_threshold:
-                    findings.append({
-                        'type': 'SIZE_SIDE_CHANNEL',
-                        'tool': tool_name,
-                        'arg': arg,
-                        'severity': 'MEDIUM',
-                        'response_size': resp_size,
-                        'note': f'Large response ({resp_size} bytes)'
-                    })
-                
-                content_lower = resp_str.lower()
-                
-                if any(ind in content_lower for ind in net_inds):
-                    findings.append({'type': 'NETWORK_ACTIVITY_DETECTED', 'tool': tool_name, 'arg': arg, 'severity': 'HIGH', 'note': 'Network activity detected'})
-                
-                if any(ind in content_lower for ind in shell_inds):
-                    findings.append({'type': 'SHELL_ACTIVITY_DETECTED', 'tool': tool_name, 'arg': arg, 'severity': 'CRITICAL', 'note': 'Shell execution detected'})
-                
-                if any(ind in content_lower for ind in root_inds):
-                    findings.append({'type': 'ROOT_FILESYSTEM_ACCESS', 'tool': tool_name, 'arg': arg, 'severity': 'HIGH', 'note': 'Filesystem access detected'})
-            
-            except (OSError, ValueError, TypeError, KeyError, TimeoutError) as e:
-                logging.debug(f"Content test failed for {tool_name}.{arg}: {e}")
+                response, _ = self.pentester.send(
+                    "tools/call",
+                    {"name": tool_name, "arguments": {arg: "test"}},
+                    skip_analysis=True,
+                )
+            except (TransportError, ProtocolError, RequestTimeout,
+                    SafetyLimitExceeded, OSError) as exc:
+                logger.debug("content probe failed for %s.%s: %s",
+                             tool_name, arg, exc)
                 continue
-            except Exception as e:
-                logging.warning(f"Unexpected error in {tool_name}.{arg}: {type(e).__name__}: {e}")
-                continue
-        
+
+            text = result_text(response)
+            size = len(text)
+            if size > self.size_threshold:
+                findings.append(make_finding(
+                    "SIZE_SIDE_CHANNEL",
+                    tool=tool_name,
+                    arg=arg,
+                    severity="LOW",
+                    confidence=25,
+                    response_size=size,
+                    evidence=["response size {} bytes".format(size)],
+                    note="large response; review whether unbounded",
+                ))
+
+            lowered = text.lower()
+            if any(indicator in lowered
+                   for indicator in self.network_indicators):
+                findings.append(make_finding(
+                    "NETWORK_ACTIVITY_DETECTED",
+                    tool=tool_name,
+                    arg=arg,
+                    severity="MEDIUM",
+                    confidence=40,
+                    evidence=[content_summary(response, 300)],
+                    note="output mentions network primitives",
+                ))
+            if any(indicator in lowered for indicator in self.shell_indicators):
+                findings.append(make_finding(
+                    "SHELL_ACTIVITY_DETECTED",
+                    tool=tool_name,
+                    arg=arg,
+                    severity="HIGH",
+                    confidence=50,
+                    evidence=[content_summary(response, 300)],
+                    note="output mentions shell primitives",
+                ))
+            if any(indicator in lowered for indicator in self.root_indicators):
+                findings.append(make_finding(
+                    "ROOT_FILESYSTEM_ACCESS",
+                    tool=tool_name,
+                    arg=arg,
+                    severity="HIGH",
+                    confidence=50,
+                    evidence=[content_summary(response, 300)],
+                    note="output mentions sensitive filesystem paths",
+                ))
         return findings

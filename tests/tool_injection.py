@@ -1,284 +1,331 @@
-"""Tool argument injection tests"""
-import time
+"""Tool argument injection tests.
+
+Detection is scoped to the probe's own response.  A candidate is reported as
+verified only when an independent repeat produces the same indicator.  Timing
+payloads are sent only with ``--allow-destructive`` and are never labeled RCE.
+"""
+from __future__ import annotations
+
 import copy
 import logging
-from payloads import PAYLOAD_PRIORITY
+from typing import Any, Dict, List
 
-# Worst severity each detector finding type implies; TIMING is statistical and
-# routinely fires on jitter, so on its own it is weak evidence.
+from core.evidence import make_finding
+from core.protocol import (
+    ProtocolError,
+    RequestTimeout,
+    SafetyLimitExceeded,
+    TransportError,
+    content_summary,
+)
+
+logger = logging.getLogger("mcpwn.tool_injection")
+
+# Worst severity each detector finding type implies.
 SEVERITY_BY_DETECTION = {
-    'RCE': 'CRITICAL',
-    'OOB_DNS': 'CRITICAL',
-    'FILE_READ': 'HIGH',
-    'TIMING': 'LOW',
+    "RCE": "CRITICAL",
+    "OOB_DNS": "CRITICAL",
+    "FILE_READ": "HIGH",
+    "TIMING": "LOW",
 }
-SEVERITY_RANK = {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1, 'INFO': 0}
+SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
 
 
 def classify_detections(detections):
-    """Return (type, severity) for the strongest detection; MEDIUM if unknown"""
-    types = [d['type'] for d in detections
-             if isinstance(d, dict) and d.get('type')]
+    """Return (type, severity) for the strongest detection; MEDIUM if unknown."""
+    types = [d["type"] for d in detections
+             if isinstance(d, dict) and d.get("type")]
     if not types:
-        return 'INJECTION_ANOMALY', 'MEDIUM'
-    rank = lambda t: SEVERITY_RANK[SEVERITY_BY_DETECTION.get(t, 'MEDIUM')]
+        return "INJECTION_ANOMALY", "MEDIUM"
+
+    def rank(finding_type):
+        return SEVERITY_RANK[SEVERITY_BY_DETECTION.get(finding_type, "MEDIUM")]
+
     strongest = max(types, key=rank)
-    return strongest, SEVERITY_BY_DETECTION.get(strongest, 'MEDIUM')
+    return strongest, SEVERITY_BY_DETECTION.get(strongest, "MEDIUM")
+
+
+def is_timing_payload(payload: str) -> bool:
+    lowered = payload.lower()
+    return "sleep" in lowered or "timeout " in lowered
 
 
 class ToolInjectionTest:
-    """Inject payloads into tool arguments"""
+    """Inject payloads into tool arguments."""
+
     def __init__(self, pentester):
         self.pentester = pentester
-        self.server_port = None
 
-    def _flatten_schema(self, schema, prefix="", visited=None, root_schema=None):
-        """Recursively flatten nested schema to paths (objects + arrays)"""
+    # -- schema handling -------------------------------------------------
+    def _flatten_schema(self, schema, prefix="", visited=None,
+                        root_schema=None):
+        """Recursively flatten a JSON schema to ``path, type`` pairs."""
         if visited is None:
             visited = set()
         if root_schema is None:
             root_schema = schema
-        
+        if not isinstance(schema, dict):
+            return
         schema_id = id(schema)
         if schema_id in visited:
             return
         visited.add(schema_id)
-        
         try:
-            # Handle $ref: dereference to target schema
-            if '$ref' in schema:
-                ref_path = schema['$ref'].split('/')
-                ref_target = root_schema
-                try:
-                    for part in ref_path:
-                        if part == '#':
-                            continue
-                        ref_target = ref_target[part]
-                    yield from self._flatten_schema(ref_target, prefix, visited, root_schema)
-                except (KeyError, TypeError):
-                    return
+            if "$ref" in schema and isinstance(schema["$ref"], str):
+                ref_target = self._resolve_ref(schema["$ref"], root_schema)
+                if ref_target is not None:
+                    yield from self._flatten_schema(
+                        ref_target, prefix, visited, root_schema)
                 return
-            
-            if schema.get('type') in ['string', 'any'] or 'type' not in schema:
-                yield prefix, schema.get('type', 'string')
+            if schema.get("type") in ("string", "any") or "type" not in schema:
+                yield prefix, schema.get("type", "string")
                 return
+            if schema.get("type") == "object":
+                for key, sub_schema in schema.get("properties", {}).items():
+                    new_prefix = "{}.{}".format(prefix, key) if prefix else key
+                    yield from self._flatten_schema(
+                        sub_schema, new_prefix, visited, root_schema)
+            elif schema.get("type") == "array":
+                yield from self._flatten_schema(
+                    schema.get("items", {}), prefix + "[0]", visited,
+                    root_schema)
+        except (AttributeError, TypeError) as exc:
+            logger.debug("schema flatten error at %r: %s", prefix, exc)
 
-            if schema.get('type') == 'object':
-                props = schema.get('properties', {})
-                for key, sub_schema in props.items():
-                    new_prefix = f"{prefix}.{key}" if prefix else key
-                    yield from self._flatten_schema(sub_schema, new_prefix, visited, root_schema)
-            
-            elif schema.get('type') == 'array':
-                items = schema.get('items', {})
-                new_prefix = f"{prefix}[0]"
-                yield from self._flatten_schema(items, new_prefix, visited, root_schema)
-        except (AttributeError, TypeError):
-            return
+    @staticmethod
+    def _resolve_ref(ref, root_schema):
+        if not ref.startswith("#/"):
+            return None
+        target = root_schema
+        for part in ref[2:].split("/"):
+            part = part.replace("~1", "/").replace("~0", "~")
+            if not isinstance(target, dict) or part not in target:
+                return None
+            target = target[part]
+        return target
 
     def _generate_dummy_args(self, schema):
-        """Generate valid args satisfying required fields"""
-        if schema.get('type') == 'object':
-            result = {}
-            required = schema.get('required', [])
-            properties = schema.get('properties', {})
-            for key in required:
-                if key in properties:
-                    prop_type = properties[key].get('type', 'string')
-                    if prop_type == 'integer' or prop_type == 'number':
-                        result[key] = 0
-                    elif prop_type == 'boolean':
-                        result[key] = False
-                    elif prop_type == 'array':
-                        result[key] = []
-                    elif prop_type == 'object':
-                        result[key] = {}
-                    else:
-                        result[key] = "test"
-            return result
-        return {}
+        if not isinstance(schema, dict) or schema.get("type") != "object":
+            return {}
+        result = {}
+        properties = schema.get("properties", {})
+        for key in schema.get("required", []):
+            if key not in properties:
+                continue
+            prop_type = properties[key].get("type", "string")
+            if prop_type in ("integer", "number"):
+                result[key] = 0
+            elif prop_type == "boolean":
+                result[key] = False
+            elif prop_type == "array":
+                result[key] = []
+            elif prop_type == "object":
+                result[key] = {}
+            else:
+                result[key] = "test"
+        return result
 
     def _parse_path(self, path):
-        """Parse path into keys, handling array indices and dots in key names"""
         keys = []
-        i = 0
-        current_key = ""
-        while i < len(path):
-            if path[i] == '[':
-                if current_key:
-                    keys.append(current_key)
-                    current_key = ""
-                j = i + 1
-                while j < len(path) and path[j] != ']':
-                    j += 1
-                keys.append(int(path[i+1:j]))
-                i = j + 1
-            elif path[i] == '.':
-                if current_key:
-                    keys.append(current_key)
-                    current_key = ""
-                i += 1
+        current = ""
+        index = 0
+        while index < len(path):
+            char = path[index]
+            if char == "[":
+                if current:
+                    keys.append(current)
+                    current = ""
+                end = path.find("]", index)
+                if end == -1:
+                    return []
+                try:
+                    keys.append(int(path[index + 1:end]))
+                except ValueError:
+                    return []
+                index = end + 1
+            elif char == ".":
+                if current:
+                    keys.append(current)
+                    current = ""
+                index += 1
             else:
-                current_key += path[i]
-                i += 1
-        if current_key:
-            keys.append(current_key)
+                current += char
+                index += 1
+        if current:
+            keys.append(current)
         return keys
 
-    def _inject_value(self, base_args, path, value, schema=None, root_schema=None):
-        """Inject payload into base_args at path (supports dot and array notation)"""
+    def _inject_value(self, base_args, path, value, schema=None,
+                      root_schema=None):
+        """Inject payload into a deep copy of ``base_args`` at ``path``."""
         data = copy.deepcopy(base_args)
         keys = self._parse_path(path)
-        if root_schema is None:
-            root_schema = schema or {}
-        
+        if not keys:
+            return data
+        root_schema = root_schema if root_schema is not None else (schema or {})
         current = data
         current_schema = root_schema
-        
-        for i, key in enumerate(keys[:-1]):
+        for position, key in enumerate(keys[:-1]):
             if isinstance(key, int):
-                item_schema = current_schema.get('items', {}) if isinstance(current_schema, dict) else {}
+                if not isinstance(current, list):
+                    return data
+                item_schema = (current_schema.get("items", {})
+                               if isinstance(current_schema, dict) else {})
+                next_key = keys[position + 1]
                 while len(current) <= key:
-                    next_key = keys[i+1]
                     current.append({} if isinstance(next_key, str) else [])
                 current = current[key]
                 current_schema = item_schema
             else:
-                if isinstance(current_schema, dict) and '$ref' in current_schema:
-                    ref_path = current_schema['$ref'].split('/')
-                    ref_target = root_schema
-                    try:
-                        for part in ref_path:
-                            if part != '#':
-                                ref_target = ref_target[part]
-                        current_schema = ref_target
-                    except (KeyError, TypeError):
-                        current_schema = {}
-                
-                props = current_schema.get('properties', {}) if isinstance(current_schema, dict) else {}
+                if not isinstance(current, dict):
+                    return data
+                if isinstance(current_schema, dict) and "$ref" in current_schema:
+                    current_schema = self._resolve_ref(
+                        current_schema["$ref"], root_schema) or {}
+                properties = (current_schema.get("properties", {})
+                              if isinstance(current_schema, dict) else {})
+                next_key = keys[position + 1]
                 if key not in current:
-                    current[key] = {} if isinstance(keys[i+1], str) else []
+                    current[key] = {} if isinstance(next_key, str) else []
                 current = current[key]
-                current_schema = props.get(key, {})
-        
+                current_schema = properties.get(key, {})
         last_key = keys[-1]
         if isinstance(last_key, int):
-            item_schema = current_schema.get('items', {}) if isinstance(current_schema, dict) else {}
-            item_type = item_schema.get('type', 'object') if isinstance(item_schema, dict) else 'object'
-            
+            if not isinstance(current, list):
+                return data
+            item_schema = (current_schema.get("items", {})
+                           if isinstance(current_schema, dict) else {})
+            item_type = (item_schema.get("type", "object")
+                         if isinstance(item_schema, dict) else "object")
+            defaults = {
+                "string": "", "integer": 0, "number": 0,
+                "boolean": False, "array": [], "object": {},
+            }
             while len(current) <= last_key:
-                if item_type == 'string':
-                    current.append("")
-                elif item_type in ['integer', 'number']:
-                    current.append(0)
-                elif item_type == 'boolean':
-                    current.append(False)
-                elif item_type == 'array':
-                    current.append([])
-                else:
-                    current.append({})
+                current.append(defaults.get(item_type, {}))
             current[last_key] = value
         else:
-            current[last_key] = value
+            if isinstance(current, dict):
+                current[last_key] = value
         return data
 
-    def run(self, tool):
-        """Execute tool injection tests with recursive schema support"""
-        self.pentester.health_check()
-        findings = []
-        schema = tool.get('inputSchema', {})
-        config = self.pentester.config
-        stop_on_first = config.get('quick', False)
-
-        # RCE-only mode: skip non-RCE categories
-        if config.get('rce_only'):
-            categories = ['command_injection']
-        else:
-            categories = PAYLOAD_PRIORITY
-
+    # -- execution -------------------------------------------------------
+    def run(self, tool: Dict[str, Any]) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        schema = tool.get("inputSchema", {}) or {}
         base_args = self._generate_dummy_args(schema)
-        seen_payloads = set()
+        config = self.pentester.config
+        quick = bool(config.get("quick"))
+        destructive = self.pentester.policy.destructive_allowed
+        limit = self.pentester.policy.payload_limit()
+
+        payloads = self.pentester.get_payloads({
+            "tool_name": tool.get("name"),
+            "target_type": "command_injection",
+            "schema_hints": schema,
+        })
+        payloads = [p for p in payloads
+                    if destructive or not is_timing_payload(p)]
+        payloads = list(dict.fromkeys(payloads))[:limit]
 
         for arg_path, arg_type in self._flatten_schema(schema):
-            if arg_type not in ['string', 'any']:
+            if arg_type not in ("string", "any"):
                 continue
+            for payload in payloads:
+                args = self._inject_value(
+                    base_args, arg_path, payload, schema, schema)
+                if args == base_args:
+                    continue
+                params = {"name": tool.get("name"), "arguments": args}
+                try:
+                    response, elapsed = self.pentester.send(
+                        "tools/call", params, skip_analysis=True)
+                except (TransportError, ProtocolError, RequestTimeout,
+                        SafetyLimitExceeded) as exc:
+                    logger.debug("send failed for %s: %s",
+                                 tool.get("name"), exc)
+                    if isinstance(exc, SafetyLimitExceeded):
+                        return findings
+                    continue
 
-            for category in categories:
-                # Get payloads: LLM-generated or static
-                context = {
-                    'tool_name': tool['name'],
-                    'target_type': category,
-                    'schema_hints': schema,
-                    'previous_failure': None
-                }
-                payloads = self.pentester.get_payloads(context)
-                
-                for payload in payloads:
-                    if payload in seen_payloads:
-                        continue
-                    seen_payloads.add(payload)
-                    
-                    args = self._inject_value(base_args, arg_path, payload, schema, schema)
-                    params = {"name": tool['name'], "arguments": args}
+                detections = self.pentester.scan_response(response)
+                if detections:
+                    finding_type, severity = classify_detections(detections)
+                    verified = self._reproduce(tool, params)
+                    findings.append(make_finding(
+                        finding_type,
+                        tool=tool.get("name"),
+                        arg=arg_path,
+                        payload=payload,
+                        severity=severity,
+                        confidence=90 if verified else 55,
+                        verified=verified,
+                        evidence=[
+                            "payload={!r}".format(payload),
+                            "indicator: {}".format(
+                                ", ".join(d.get("indicator", "")
+                                          for d in detections)[:300]),
+                            "response: {}".format(
+                                content_summary(response, 300)),
+                        ],
+                        detections=detections,
+                        note="indicator reproduced" if verified
+                             else "single observation; reproduce manually",
+                    ))
+                    if quick:
+                        return findings
+                    continue
 
-                    try:
-                        start_time = time.time()
-                        self.pentester.send("tools/call", params)
-                        duration = time.time() - start_time
-                        
-                        if category == 'command_injection' and duration > 5 and 'sleep' in payload:
-                            findings.append({
-                                'tool': tool['name'],
-                                'arg': arg_path,
-                                'payload': payload,
-                                'type': 'BLIND_RCE_TIMING',
-                                'category': 'BLIND_RCE_TIMING',
-                                'severity': 'HIGH',
-                                'detections': [f'Timing delay: {duration:.2f}s']
-                            })
-                            if stop_on_first:
-                                return findings
-                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                        logging.debug(f"Tool injection send error: {e}")
-                        continue
-
-                    try:
-                        new_findings = self._check_detections(tool['name'], arg_path, payload, category)
-                        if new_findings:
-                            findings.extend(new_findings)
-                            if stop_on_first:
-                                return findings
-                    except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                        logging.debug(f"Detection check error: {e}")
-                    
-                    if not stop_on_first:
-                        time.sleep(0.1)
-                        try:
-                            new_findings = self._check_detections(tool['name'], arg_path, payload, category)
-                            if new_findings:
-                                findings.extend(new_findings)
-                        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-                            logging.debug(f"Detection check error: {e}")
-
+                if destructive and is_timing_payload(payload):
+                    timing = self._timing_signal(
+                        tool, params, elapsed, payload, arg_path)
+                    if timing:
+                        findings.append(timing)
+                        if quick:
+                            return findings
         return findings
 
-    def _check_detections(self, tool_name, arg, payload, category):
-        """Extract findings from detector"""
-        results = []
+    def _reproduce(self, tool, params):
         try:
-            if self.pentester.detector.findings:
-                detections = self.pentester.detector.report()
-                ftype, severity = classify_detections(detections)
-                results.append({
-                    'tool': tool_name,
-                    'arg': arg,
-                    'payload': payload,
-                    'type': ftype,
-                    'category': category,
-                    'severity': severity,
-                    'detections': detections
-                })
-                self.pentester.detector.findings = []
-        except (OSError, ValueError, TypeError, AttributeError, KeyError) as e:
-            logging.debug(f"Detector access error: {e}")
-        return results
+            response, _ = self.pentester.send(
+                "tools/call", params, skip_analysis=True)
+        except (TransportError, ProtocolError, RequestTimeout,
+                SafetyLimitExceeded):
+            return False
+        return bool(self.pentester.scan_response(response))
+
+    def _timing_signal(self, tool, params, elapsed, payload, arg_path):
+        """Report a timing delay as a weak signal, never as confirmed RCE."""
+        baseline = self.pentester.measure_baseline("ping", {}, samples=3)
+        if baseline is None:
+            return None
+        try:
+            _, control_elapsed = self.pentester.send(
+                "tools/call", params, skip_analysis=True)
+        except (TransportError, ProtocolError, RequestTimeout,
+                SafetyLimitExceeded):
+            return None
+        try:
+            _, repeat_elapsed = self.pentester.send(
+                "tools/call", params, skip_analysis=True)
+        except (TransportError, ProtocolError, RequestTimeout,
+                SafetyLimitExceeded):
+            return None
+        if min(elapsed, control_elapsed, repeat_elapsed) < baseline + 2.0:
+            return None
+        return make_finding(
+            "BLIND_RCE_TIMING",
+            tool=tool.get("name"),
+            arg=arg_path,
+            payload=payload,
+            severity="MEDIUM",
+            confidence=40,
+            verified=False,
+            evidence=[
+                "baseline median {:.2f}s".format(baseline),
+                "probe {:.2f}s, repeat {:.2f}s".format(
+                    control_elapsed, repeat_elapsed),
+                "timing anomaly only; no output oracle",
+            ],
+            note="unverified timing anomaly; not confirmed command execution",
+        )
