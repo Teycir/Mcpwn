@@ -38,7 +38,7 @@ class McpSession:
                  strict_version: bool = False):
         self.transport = transport
         self.client_info = dict(client_info or {
-            "name": "mcpwn", "version": "2.0.0"})
+            "name": "mcpwn", "version": "2.1.0"})
         self.timeout = timeout
         self.preferred_version = protocol_version
         self.client_capabilities = dict(capabilities or {})

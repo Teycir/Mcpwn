@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [2.1.0] - 2026-11-11
+
+GitHub target-provider release.
 
 ### Added
 
@@ -26,6 +28,10 @@
   shadow the requested package.
 - A failed MCP initialization now skips active suites and marks the runtime scan
   failed instead of emitting misleading capability findings.
+
+### Changed
+
+- Bumped the application, report and MCP client versions to 2.1.0.
 
 ## [2.0.0] - 2026-11-11
 

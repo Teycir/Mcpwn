@@ -1,4 +1,4 @@
-# Mcpwn Engineering Assessment — v2.0.0
+# Mcpwn Engineering Assessment — v2.1.0
 
 **Scope:** commit `2efd027` (main), Python 3.12.3, Linux.
 **Method:** full source review, dependency inspection, baseline test run, and

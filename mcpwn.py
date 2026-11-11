@@ -10,7 +10,7 @@ from pathlib import Path
 
 from core import MCPPentester
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 
 def load_profile(path):

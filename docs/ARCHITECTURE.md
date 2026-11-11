@@ -1,4 +1,4 @@
-# Mcpwn Architecture (v2.0.0)
+# Mcpwn Architecture (v2.1.0)
 
 ## 1. Goals
 
